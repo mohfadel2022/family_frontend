@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
     ChevronDown,
     Folder,
@@ -10,19 +10,80 @@ import {
     Edit2,
     Trash2,
     Search,
-    Filter,
     ArrowDownRight,
-    Library
+    Library,
+    ChevronsDownUp,
+    ChevronsUpDown,
+    X
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import axios from 'axios';
 import { toast } from 'sonner';
 import { IconBox } from '@/components/ui/IconBox';
 import { PageHeader } from '@/components/ui/PageHeader';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogHeader,
+    DialogTitle,
+} from '@/components/ui/dialog';
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
 
-const AccountItem = ({ id, name, code, type, balance, currency, children, onEdit, onDelete }: any) => {
-    const [isExpanded, setIsExpanded] = useState(true);
+import { AccountModal } from '@/components/AccountModal';
+import { ConfirmationDialog } from '@/components/ui/ConfirmationDialog';
+
+// ─── Account Item ─────────────────────────────────────────────────────────────
+interface AccountItemProps {
+    id: string;
+    name: string;
+    code: string;
+    type: string;
+    balance?: number;          // balance in account's own currency
+    baseBalance?: number;      // equivalent in base currency
+    baseCurrencyCode?: string; // base currency code, e.g. "SAR"
+    hasMixedCurrencies?: boolean;
+    childCurrencies?: Record<string, number>; // { USD: 500, EUR: 200 }
+    currency: string;
+    children?: React.ReactNode;
+    onEdit: () => void;
+    onDelete: () => void;
+    isExpanded: boolean;
+    onToggle: (id: string) => void;
+    searchQuery: string;
+}
+
+const AccountItem = ({
+    id, name, code, type, balance, baseBalance, baseCurrencyCode,
+    hasMixedCurrencies, childCurrencies,
+    currency, children, onEdit, onDelete,
+    isExpanded, onToggle, searchQuery
+}: AccountItemProps) => {
     const hasChildren = children && React.Children.count(children) > 0;
+    const fmtNum = (n: number) => n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const isNeg = (n?: number) => (n ?? 0) < 0;
+
+    // Highlight search matches
+    const highlight = (text: string) => {
+        if (!searchQuery) return <span>{text}</span>;
+        const idx = text.toLowerCase().indexOf(searchQuery.toLowerCase());
+        if (idx === -1) return <span>{text}</span>;
+        return (
+            <span>
+                {text.slice(0, idx)}
+                <mark className="bg-yellow-200 text-yellow-900 rounded px-0.5">{text.slice(idx, idx + searchQuery.length)}</mark>
+                {text.slice(idx + searchQuery.length)}
+            </span>
+        );
+    };
 
     return (
         <div className="select-none animate-in fade-in slide-in-from-right duration-300">
@@ -31,7 +92,7 @@ const AccountItem = ({ id, name, code, type, balance, currency, children, onEdit
                     "flex items-center gap-4 p-1 rounded-2xl group cursor-pointer transition-all border border-transparent",
                     hasChildren ? "hover:bg-blue-50/30" : "hover:bg-slate-100/50"
                 )}
-                onClick={() => setIsExpanded(!isExpanded)}
+                onClick={() => hasChildren && onToggle(id)}
             >
                 <div className="flex items-center gap-3 flex-1">
                     <div className="relative">
@@ -51,8 +112,8 @@ const AccountItem = ({ id, name, code, type, balance, currency, children, onEdit
 
                     <div className="flex flex-col">
                         <div className="flex items-center gap-2">
-                            <span className="font-mono text-xs font-black text-blue-500 bg-blue-50 px-2 py-0.5 rounded-lg">{code}</span>
-                            <span className="font-black text-sm text-slate-800 tracking-tight">{name}</span>
+                            <span className="font-mono text-xs font-black text-blue-500 bg-blue-50 px-2 py-0.5 rounded-lg">{highlight(code)}</span>
+                            <span className="font-black text-sm text-slate-800 tracking-tight">{highlight(name)}</span>
                         </div>
                         <span className={cn(
                             "text-[10px] font-black uppercase tracking-widest mt-0.5",
@@ -60,31 +121,67 @@ const AccountItem = ({ id, name, code, type, balance, currency, children, onEdit
                                 type === 'REVENUE' ? "text-emerald-500" :
                                     type === 'EXPENSE' ? "text-rose-500" :
                                         "text-slate-400"
-                        )}>{type}</span>
+                        )}>
+                            {type === 'ASSET' ? 'أصول' :
+                                type === 'LIABILITY' ? 'خصوم' :
+                                    type === 'EQUITY' ? 'حقوق الملكية' :
+                                        type === 'REVENUE' ? 'إيرادات' :
+                                            type === 'EXPENSE' ? 'مصروفات' : type}
+                        </span>
                     </div>
                 </div>
 
                 <div className="flex items-center gap-6">
-                    <div className="text-right flex flex-col items-end">
-                        <span className="font-mono font-black text-slate-900 text-lg tabular-nums">
-                            {balance?.toLocaleString() || '0.00'}
+                    <div className="text-right flex flex-col items-end gap-0.5">
+                        {/* Primary balance in account's own currency */}
+                        <span className={cn(
+                            "font-mono font-black text-lg tabular-nums",
+                            isNeg(balance) ? "text-rose-600" : "text-slate-900"
+                        )}>
+                            {fmtNum(balance ?? 0)}
+                            <span className="text-[10px] font-black text-slate-400 uppercase ml-1.5 tracking-tighter">{currency}</span>
                         </span>
-                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-tighter">{currency}</span>
+
+                        {/* If parent has mixed currencies: show base equivalent */}
+                        {hasMixedCurrencies && baseBalance !== undefined && baseCurrencyCode && (
+                            <span className="text-[10px] font-mono text-slate-400 tabular-nums">
+                                ≈ {fmtNum(baseBalance)}
+                                <span className="ml-1 font-black text-slate-300 uppercase">{baseCurrencyCode}</span>
+                            </span>
+                        )}
+
+                        {/* Per-child-currency chips when mixed */}
+                        {hasMixedCurrencies && childCurrencies && Object.keys(childCurrencies).length > 0 && (
+                            <div className="flex flex-wrap gap-1 justify-end mt-0.5">
+                                {Object.entries(childCurrencies).map(([code, val]) => (
+                                    <span key={code} className={cn(
+                                        "inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[9px] font-black uppercase tracking-tight",
+                                        isNeg(val) ? "bg-rose-50 text-rose-500" : "bg-indigo-50 text-indigo-500"
+                                    )}>
+                                        {fmtNum(val)} {code}
+                                    </span>
+                                ))}
+                            </div>
+                        )}
                     </div>
 
                     <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-all scale-95 group-hover:scale-100">
-                        <button
+                        <Button
+                            size="icon"
+                            variant="ghost"
                             onClick={(e) => { e.stopPropagation(); onEdit(); }}
-                            className="p-2.5 text-slate-400 hover:text-blue-600 hover:bg-white rounded-xl shadow-sm hover:shadow-md transition-all border border-transparent hover:border-blue-100"
+                            className="w-10 h-10 text-slate-400 hover:text-blue-600 hover:bg-white rounded-xl shadow-sm hover:shadow-md transition-all border border-transparent hover:border-blue-100"
                         >
                             <Edit2 size={16} />
-                        </button>
-                        <button
+                        </Button>
+                        <Button
+                            size="icon"
+                            variant="ghost"
                             onClick={(e) => { e.stopPropagation(); onDelete(); }}
-                            className="p-2.5 text-slate-400 hover:text-rose-600 hover:bg-white rounded-xl shadow-sm hover:shadow-md transition-all border border-transparent hover:border-rose-100"
+                            className="w-10 h-10 text-slate-400 hover:text-rose-600 hover:bg-white rounded-xl shadow-sm hover:shadow-md transition-all border border-transparent hover:border-rose-100"
                         >
                             <Trash2 size={16} />
-                        </button>
+                        </Button>
                     </div>
                 </div>
             </div>
@@ -98,6 +195,7 @@ const AccountItem = ({ id, name, code, type, balance, currency, children, onEdit
     );
 };
 
+// ─── Main Page ────────────────────────────────────────────────────────────────
 const AccountsPage = () => {
     const [accounts, setAccounts] = useState<any[]>([]);
     const [currencies, setCurrencies] = useState<any[]>([]);
@@ -106,6 +204,24 @@ const AccountsPage = () => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingAccount, setEditingAccount] = useState<any>(null);
 
+    // Confirmation Dialog State
+    const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+    const [accountToDelete, setAccountToDelete] = useState<string | null>(null);
+    const [isDeleting, setIsDeleting] = useState(false);
+
+    // ── Expansion state fully controlled here ──────────────────────────────
+    // Set of account IDs that are currently expanded
+    const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+
+    // Search
+    const [searchQuery, setSearchQuery] = useState('');
+
+    // Get all accounts that have at least one child (parent accounts)
+    const getParentIds = useCallback((accs: any[]): string[] => {
+        const parentIdSet = new Set(accs.map(a => a.parentId).filter(Boolean));
+        return accs.filter(a => parentIdSet.has(a.id)).map(a => a.id);
+    }, []);
+
     const fetchData = async () => {
         try {
             const [accRes, currRes, branchRes] = await Promise.all([
@@ -113,9 +229,12 @@ const AccountsPage = () => {
                 axios.get('http://localhost:4000/api/meta/', { headers: { Authorization: 'Bearer mock-token' } }),
                 axios.get('http://localhost:4000/api/meta/branches', { headers: { Authorization: 'Bearer mock-token' } })
             ]);
-            setAccounts(accRes.data);
+            const accs = accRes.data.sort((a: any, b: any) => a.code.localeCompare(b.code, undefined, { numeric: true }));
+            setAccounts(accs);
             setCurrencies(currRes.data);
             setBranches(branchRes.data);
+            // Default: all parents expanded
+            setExpandedIds(new Set(getParentIds(accs)));
         } catch (err) {
             console.error(err);
         } finally {
@@ -127,90 +246,192 @@ const AccountsPage = () => {
         fetchData();
     }, []);
 
-    const handleDelete = async (id: string) => {
-        if (!confirm('هل أنت متأكد من حذف هذا الحساب؟')) return;
+    // Toggle a single account's expanded state
+    const handleToggle = useCallback((id: string) => {
+        setExpandedIds(prev => {
+            const next = new Set(prev);
+            if (next.has(id)) next.delete(id);
+            else next.add(id);
+            return next;
+        });
+    }, []);
+
+    // Expand all parent accounts
+    const handleExpandAll = () => {
+        setExpandedIds(new Set(getParentIds(accounts)));
+    };
+
+    // Collapse all
+    const handleCollapseAll = () => {
+        setExpandedIds(new Set());
+    };
+
+    const handleDelete = (id: string) => {
+        setAccountToDelete(id);
+        setIsDeleteDialogOpen(true);
+    };
+
+    const confirmDelete = async () => {
+        if (!accountToDelete) return;
+        setIsDeleting(true);
         try {
-            await axios.delete(`http://localhost:4000/api/meta/accounts/${id}`, {
+            await axios.delete(`http://localhost:4000/api/meta/accounts/${accountToDelete}`, {
                 headers: { Authorization: 'Bearer mock-token' }
             });
-            toast.success('تم حذف الحساب بنجاح');
+            toast.success('تم حذف الحساب بنجاح', {
+                description: 'تمت إزالة الحساب وكافة البيانات المرتبطة به من النظام.'
+            });
             fetchData();
+            setIsDeleteDialogOpen(false);
         } catch (err: any) {
-            toast.error(err.response?.data?.error || 'فشل الحذف');
+            toast.error(err.response?.data?.error || 'فشل الحذف', {
+                description: 'تأكد من عدم وجود قيود يومية مرتبطة بهذا الحساب قبل محاولة حذفه.'
+            });
+        } finally {
+            setIsDeleting(false);
+            setAccountToDelete(null);
         }
     };
 
-    const buildTree = (parentId: string | null = null) => {
+    // Filter for search
+    const matchesSearch = useCallback((account: any): boolean => {
+        if (!searchQuery) return true;
+        const q = searchQuery.toLowerCase();
+        return account.name.toLowerCase().includes(q) || account.code.toLowerCase().includes(q);
+    }, [searchQuery]);
+
+    const hasMatchingDescendant = useCallback((accountId: string): boolean => {
+        const children = accounts.filter(a => a.parentId === accountId);
+        return children.some(child => matchesSearch(child) || hasMatchingDescendant(child.id));
+    }, [accounts, matchesSearch]);
+
+    const buildTree = (parentId: string | null = null): React.ReactNode[] => {
         return accounts
             .filter(a => a.parentId === parentId)
-            .map(a => (
-                <AccountItem
-                    key={a.id}
-                    id={a.id}
-                    name={a.name}
-                    code={a.code}
-                    type={a.type}
-                    balance={0}
-                    currency={a.currency.code}
-                    onEdit={() => { setEditingAccount(a); setIsModalOpen(true); }}
-                    onDelete={() => handleDelete(a.id)}
-                >
-                    {buildTree(a.id)}
-                </AccountItem>
-            ));
+            .filter(a => {
+                if (!searchQuery) return true;
+                return matchesSearch(a) || hasMatchingDescendant(a.id);
+            })
+            .map(a => {
+                const hasChildren = accounts.some(b => b.parentId === a.id);
+                // When searching: force expand so results are visible
+                const isExpanded = searchQuery ? true : expandedIds.has(a.id);
+                const baseCurrency = currencies.find((c: any) => c.isBase);
+                return (
+                    <AccountItem
+                        key={a.id}
+                        id={a.id}
+                        name={a.name}
+                        code={a.code}
+                        type={a.type}
+                        balance={a.balance}
+                        baseBalance={a.baseBalance}
+                        baseCurrencyCode={baseCurrency?.code}
+                        hasMixedCurrencies={a.hasMixedCurrencies}
+                        childCurrencies={a.childCurrencies}
+                        currency={a.currency.code}
+                        onEdit={() => { setEditingAccount(a); setIsModalOpen(true); }}
+                        onDelete={() => handleDelete(a.id)}
+                        isExpanded={isExpanded}
+                        onToggle={handleToggle}
+                        searchQuery={searchQuery}
+                    >
+                        {buildTree(a.id)}
+                    </AccountItem>
+                );
+            });
     };
+
+    const parentAccountsCount = accounts.filter(a => accounts.some(b => b.parentId === a.id)).length;
+    const leafAccountsCount = accounts.filter(a => !accounts.some(b => b.parentId === a.id)).length;
 
     return (
         <div className="max-w-6xl mx-auto space-y-8 animate-in fade-in duration-700">
             {/* Header Section */}
-            <div className="bg-white/80 backdrop-blur-xl p-6 rounded-[2.5rem] border border-white shadow-2xl shadow-blue-500/5 flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
-                <PageHeader
-                    icon={Library}
-                    title="شجرة الحسابات"
-                    description="Chart of Accounts Management"
-                    iconClassName="bg-gradient-to-br from-indigo-600 to-blue-600 shadow-blue-200"
-                    iconSize={24}
-                />
-                <button
+            <PageHeader
+                icon={Library}
+                title="شجرة الحسابات"
+                description="Chart of Accounts Management"
+                iconClassName="bg-gradient-to-br from-indigo-600 to-blue-600 shadow-blue-200"
+                iconSize={24}
+                className="mb-8"
+            >
+                <Button
                     onClick={() => { setEditingAccount(null); setIsModalOpen(true); }}
-                    className="group relative flex items-center gap-2 bg-slate-900 text-white px-6 py-3.5 rounded-2xl font-black transition-all hover:bg-black hover:-translate-y-0.5 active:translate-y-0 shadow-xl shadow-slate-200 text-xs"
+                    className="shadow-xl"
                 >
-                    <Plus size={18} className="group-hover:rotate-90 transition-transform duration-300" />
+                    <Plus size={18} className="mr-2 group-hover:rotate-90 transition-transform duration-300" />
                     إضافة حساب جديد
-                </button>
-            </div>
+                </Button>
+            </PageHeader>
 
             <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
                 {/* Stats & Tools */}
                 <div className="lg:col-span-1 space-y-6">
-                    <div className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-xl shadow-slate-200/50">
-                        <div className="relative mb-6">
-                            <Search className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-                            <input
-                                className="w-full bg-slate-50 border border-slate-200 rounded-2xl py-3 pr-10 pl-4 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all font-bold placeholder:text-slate-300"
+                    <div className="bg-white p-5 rounded-[2rem] border border-slate-100 shadow-xl shadow-slate-200/50">
+                        {/* Search */}
+                        <div className="relative mb-4">
+                            <Search className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+                            <Input
+                                className="w-full bg-slate-50 border-slate-200 rounded-2xl text-xs py-5 pr-9 pl-8 transition-all font-bold placeholder:text-slate-300"
                                 placeholder="ابحث عن حساب..."
+                                value={searchQuery}
+                                onChange={e => setSearchQuery(e.target.value)}
                             />
+                            {searchQuery && (
+                                <button
+                                    onClick={() => setSearchQuery('')}
+                                    className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
+                                >
+                                    <X size={14} />
+                                </button>
+                            )}
                         </div>
 
+                        {/* Expand / Collapse All — single toggle button */}
+                        <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => {
+                                const parentIds = getParentIds(accounts);
+                                const allExpanded = parentIds.every(id => expandedIds.has(id));
+                                allExpanded ? handleCollapseAll() : handleExpandAll();
+                            }}
+                            className="w-full justify-center gap-2 text-xs font-black rounded-xl border-slate-200 hover:border-blue-300 hover:text-blue-600 hover:bg-blue-50 transition-all mb-5"
+                        >
+                            {getParentIds(accounts).every(id => expandedIds.has(id))
+                                ? <><ChevronsDownUp size={13} /> طي الكل</>
+                                : <><ChevronsUpDown size={13} /> توسيع الكل</>
+                            }
+                        </Button>
+
                         <div className="space-y-4">
-                            <h4 className="text-xs font-black text-slate-400 uppercase tracking-[0.2em] mr-2">إحصائيات الشجرة</h4>
-                            <div className="grid grid-cols-2 gap-3">
-                                <div className="p-4 bg-blue-50 rounded-2xl border border-blue-100">
-                                    <div className="text-blue-600 font-black text-2xl">{accounts.length}</div>
-                                    <div className="text-[10px] font-black text-blue-400 uppercase">إجمالي الحسابات</div>
+                            <h4 className="text-xs font-black text-slate-400 uppercase tracking-[0.2em]">إحصائيات الشجرة</h4>
+                            <div className="grid grid-cols-2 gap-2">
+                                <div className="p-3 bg-blue-50 rounded-2xl border border-blue-100">
+                                    <div className="text-blue-600 font-black text-xl">{accounts.length}</div>
+                                    <div className="text-[9px] font-black text-blue-400 uppercase leading-tight mt-0.5">إجمالي</div>
                                 </div>
-                                <div className="p-4 bg-emerald-50 rounded-2xl border border-emerald-100">
-                                    <div className="text-emerald-600 font-black text-2xl">{accounts.filter(a => !a.parentId).length}</div>
-                                    <div className="text-[10px] font-black text-emerald-400 uppercase">رئيسية</div>
+                                <div className="p-3 bg-emerald-50 rounded-2xl border border-emerald-100">
+                                    <div className="text-emerald-600 font-black text-xl">{accounts.filter(a => !a.parentId).length}</div>
+                                    <div className="text-[9px] font-black text-emerald-400 uppercase leading-tight mt-0.5">رئيسية</div>
+                                </div>
+                                <div className="p-3 bg-indigo-50 rounded-2xl border border-indigo-100">
+                                    <div className="text-indigo-600 font-black text-xl">{parentAccountsCount}</div>
+                                    <div className="text-[9px] font-black text-indigo-400 uppercase leading-tight mt-0.5">مجمّعة</div>
+                                </div>
+                                <div className="p-3 bg-amber-50 rounded-2xl border border-amber-100">
+                                    <div className="text-amber-600 font-black text-xl">{leafAccountsCount}</div>
+                                    <div className="text-[9px] font-black text-amber-400 uppercase leading-tight mt-0.5">تشغيلية</div>
                                 </div>
                             </div>
                         </div>
 
-                        <div className="mt-8 p-6 bg-gradient-to-br from-blue-600 to-indigo-700 rounded-[2rem] text-white overflow-hidden relative group">
-                            <ArrowDownRight size={80} className="absolute -bottom-6 -left-6 opacity-10 group-hover:scale-110 transition-transform" />
-                            <h5 className="font-black text-lg mb-2">هيكلة ذكية</h5>
-                            <p className="text-xs text-blue-100 font-bold leading-relaxed">
-                                قم بتنظيم حساباتك في مستويات غير محدودة. الحسابات الرئيسية (Folders) تجمع أرصدة الحسابات الفرعية تلقائياً.
+                        <div className="mt-5 p-5 bg-gradient-to-br from-blue-600 to-indigo-700 rounded-[1.5rem] text-white overflow-hidden relative group">
+                            <ArrowDownRight size={60} className="absolute -bottom-4 -left-4 opacity-10 group-hover:scale-110 transition-transform" />
+                            <h5 className="font-black text-sm mb-1">هيكلة ذكية</h5>
+                            <p className="text-[10px] text-blue-100 font-bold leading-relaxed">
+                                قم بتنظيم حساباتك في مستويات غير محدودة. الحسابات الرئيسية تجمع أرصدة الفرعية تلقائياً.
                             </p>
                         </div>
                     </div>
@@ -231,7 +452,23 @@ const AccountsPage = () => {
                             </div>
                         ) : (
                             <div className="space-y-2">
-                                {accounts.length > 0 ? buildTree(null) : (
+                                {/* Search indicator */}
+                                {searchQuery && (
+                                    <div className="flex items-center gap-2 mb-4 px-2">
+                                        <Search size={14} className="text-blue-500" />
+                                        <span className="text-xs font-black text-blue-600">
+                                            نتائج البحث عن: "<span className="text-slate-800">{searchQuery}</span>"
+                                        </span>
+                                    </div>
+                                )}
+                                {accounts.length > 0 ? (
+                                    buildTree(null).length > 0 ? buildTree(null) : (
+                                        <div className="flex flex-col items-center justify-center py-20 gap-4">
+                                            <Search size={40} className="text-slate-200" />
+                                            <p className="font-black text-slate-400">لا توجد حسابات تطابق البحث</p>
+                                        </div>
+                                    )
+                                ) : (
                                     <div className="flex flex-col items-center justify-center py-32 gap-6">
                                         <IconBox icon={Library} className="bg-slate-100 text-slate-300" boxSize="w-20 h-20" iconSize={40} />
                                         <div className="text-center">
@@ -256,157 +493,18 @@ const AccountsPage = () => {
                     onSave={fetchData}
                 />
             )}
-        </div>
-    );
-};
 
-const AccountModal = ({ account, accounts, currencies, branches, onClose, onSave }: any) => {
-    const [formData, setFormData] = useState(account || {
-        name: '',
-        code: '',
-        type: 'ASSET',
-        currencyId: currencies[0]?.id,
-        branchId: branches[0]?.id,
-        parentId: null
-    });
-    const [loading, setLoading] = useState(false);
-
-    const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
-        setLoading(true);
-        try {
-            const payload = {
-                name: formData.name,
-                code: formData.code,
-                type: formData.type,
-                currencyId: formData.currencyId,
-                branchId: formData.branchId,
-                parentId: (formData.parentId === 'null' || !formData.parentId) ? null : formData.parentId
-            };
-
-            const headers = { Authorization: 'Bearer mock-token' };
-            if (account) {
-                await axios.put(`http://localhost:4000/api/meta/accounts/${account.id}`, payload, { headers });
-            } else {
-                await axios.post('http://localhost:4000/api/meta/accounts', payload, { headers });
-            }
-            onSave();
-            onClose();
-            toast.success(account ? 'تم تحديث الحساب بنجاح' : 'تم إضافة الحساب بنجاح');
-        } catch (err: any) {
-            toast.error(err.response?.data?.error || 'فشل الحفظ');
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    return (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-50 flex items-center justify-center p-4 animate-in fade-in duration-300">
-            <div className="bg-white rounded-[2.5rem] w-full max-w-2xl shadow-3xl border border-slate-100 overflow-hidden animate-in zoom-in-95 duration-500">
-                <div className="p-8 bg-gradient-to-br from-slate-50 to-white border-b border-slate-100 flex justify-between items-center">
-                    <PageHeader
-                        icon={FileText}
-                        title={account ? 'تعديل بيانات الحساب' : 'إضافة حساب مالي'}
-                        description="Account Structure Definition"
-                        iconClassName="bg-gradient-to-br from-blue-600 to-indigo-700 shadow-blue-200"
-                        iconSize={24}
-                    />
-                </div>
-
-                <form onSubmit={handleSubmit} className="p-8 space-y-6">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <div className="md:col-span-2 space-y-2">
-                            <label className="text-sm font-black text-slate-700 mr-1">اسم الحساب الكامل</label>
-                            <input
-                                required
-                                placeholder="مثال: مصرف الراجحي - الحساب الجاري"
-                                className="w-full px-5 py-4 rounded-2xl bg-slate-50 border border-slate-200 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all font-bold"
-                                value={formData.name}
-                                onChange={e => setFormData({ ...formData, name: e.target.value })}
-                            />
-                        </div>
-
-                        <div className="space-y-2">
-                            <label className="text-sm font-black text-slate-700 mr-1">كود الحساب (فريد)</label>
-                            <input
-                                required
-                                placeholder="101001"
-                                className="w-full px-5 py-4 rounded-2xl bg-slate-50 border border-slate-200 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all font-mono font-bold"
-                                value={formData.code}
-                                onChange={e => setFormData({ ...formData, code: e.target.value })}
-                            />
-                        </div>
-
-                        <div className="space-y-2">
-                            <label className="text-sm font-black text-slate-700 mr-1">نوع الحساب</label>
-                            <select
-                                className="w-full px-5 py-4 rounded-2xl bg-slate-50 border border-slate-200 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all font-bold appearance-none cursor-pointer"
-                                value={formData.type}
-                                onChange={e => setFormData({ ...formData, type: e.target.value })}
-                            >
-                                <option value="ASSET">أصل (Asset)</option>
-                                <option value="LIABILITY">التزام (Liability)</option>
-                                <option value="EQUITY">حقوق ملكية (Equity)</option>
-                                <option value="REVENUE">إيراد (Revenue)</option>
-                                <option value="EXPENSE">مصروف (Expense)</option>
-                            </select>
-                        </div>
-
-                        <div className="space-y-2">
-                            <label className="text-sm font-black text-slate-700 mr-1">العملة الأساسية</label>
-                            <select
-                                className="w-full px-5 py-4 rounded-2xl bg-slate-50 border border-slate-200 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all font-bold appearance-none cursor-pointer"
-                                value={formData.currencyId}
-                                onChange={e => setFormData({ ...formData, currencyId: e.target.value })}
-                            >
-                                {currencies.map((c: any) => <option key={c.id} value={c.id}>{c.name} ({c.code})</option>)}
-                            </select>
-                        </div>
-
-                        <div className="space-y-2">
-                            <label className="text-sm font-black text-slate-700 mr-1">الفرع المحاسبي</label>
-                            <select
-                                className="w-full px-5 py-4 rounded-2xl bg-slate-50 border border-slate-200 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all font-bold appearance-none cursor-pointer"
-                                value={formData.branchId}
-                                onChange={e => setFormData({ ...formData, branchId: e.target.value })}
-                            >
-                                {branches.map((b: any) => <option key={b.id} value={b.id}>{b.name}</option>)}
-                            </select>
-                        </div>
-
-                        <div className="md:col-span-2 space-y-2">
-                            <label className="text-sm font-black text-slate-700 mr-1 underline decoration-blue-200 decoration-4">تبعية الحساب في الشجرة (Parent)</label>
-                            <select
-                                className="w-full px-5 py-4 rounded-2xl bg-slate-50 border border-slate-200 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all font-bold appearance-none cursor-pointer"
-                                value={formData.parentId || 'null'}
-                                onChange={e => setFormData({ ...formData, parentId: e.target.value })}
-                            >
-                                <option value="null">-- بدون (هذا حساب مستوى أول / Parent Root) --</option>
-                                {accounts.filter((a: any) => a.id !== account?.id).map((a: any) => (
-                                    <option key={a.id} value={a.id}>{a.code} | {a.name}</option>
-                                ))}
-                            </select>
-                        </div>
-                    </div>
-
-                    <div className="flex gap-4 pt-6">
-                        <button
-                            type="button"
-                            onClick={onClose}
-                            className="flex-1 px-4 py-5 rounded-2xl border border-slate-200 font-black text-slate-500 hover:bg-slate-50 transition-all uppercase text-xs"
-                        >
-                            إلغاء الأمر
-                        </button>
-                        <button
-                            disabled={loading}
-                            type="submit"
-                            className="flex-[2] px-4 py-5 rounded-2xl bg-blue-600 text-white font-black hover:bg-blue-700 shadow-xl shadow-blue-100 transition-all flex items-center justify-center gap-2"
-                        >
-                            {loading ? <Loader2 size={24} className="animate-spin" /> : 'اعتماد وحفظ الحساب'}
-                        </button>
-                    </div>
-                </form>
-            </div>
+            <ConfirmationDialog
+                open={isDeleteDialogOpen}
+                onOpenChange={setIsDeleteDialogOpen}
+                onConfirm={confirmDelete}
+                isLoading={isDeleting}
+                variant="destructive"
+                title="حذف الحساب المالي"
+                description="هل أنت متأكد من حذف هذا الحساب؟ لا يمكن التراجع عن هذه العملية إذا كانت هناك بيانات مرتبطة."
+                confirmText="حذف نهائي"
+                cancelText="إلغاء الأمر"
+            />
         </div>
     );
 };

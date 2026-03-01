@@ -1,178 +1,302 @@
 "use client";
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import {
   TrendingUp,
   TrendingDown,
   Wallet,
   ArrowUpRight,
   Briefcase,
-  History,
+  History as HistoryIcon,
   Activity,
-  LayoutDashboard
+  LayoutDashboard,
+  Loader2,
+  Receipt,
+  Coins,
+  ArrowDownRight,
+  DollarSign
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { IconBox } from '@/components/ui/IconBox';
+import { Card, CardContent, CardHeader } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import axios from 'axios';
+import { toast } from 'sonner';
 
-const StatCard = ({ title, amount, currency, icon: Icon, trend, trendValue, color }: any) => (
-  <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 hover:shadow-md transition-shadow">
-    <div className="flex justify-between items-start mb-4">
-      <IconBox icon={Icon} className={cn("shadow-lg shadow-blue-500/5", color)} boxSize="w-12 h-12" iconSize={22} />
-      {trend && (
-        <div className={cn(
-          "flex items-center gap-1 text-sm font-medium px-2 py-1 rounded-full",
-          trend === 'up' ? "bg-emerald-50 text-emerald-600" : "bg-red-50 text-red-600"
-        )}>
-          {trend === 'up' ? <TrendingUp size={14} /> : <TrendingDown size={14} />}
-          {trendValue}%
+const API_BASE = 'http://localhost:4000/api';
+const AUTH_HEADER = { headers: { Authorization: 'Bearer mock-token' } };
+
+// ─── Multi-Currency Card ────────────────────────────────────────────────
+const CurrencyCard = ({
+  title,
+  subtitle,
+  icon: Icon,
+  color,
+  gradientFrom,
+  gradientTo,
+  items,
+  totalBase,
+  baseCurrencyCode = 'SAR',
+  loading,
+  emptyText
+}: any) => (
+  <Card className="relative overflow-hidden group shadow-sm hover:shadow-xl transition-all duration-500 border-slate-100/80 rounded-3xl bg-white">
+    {loading && (
+      <div className="absolute inset-0 bg-white/70 backdrop-blur-sm z-10 flex items-center justify-center">
+        <Loader2 className="animate-spin text-blue-500" size={24} />
+      </div>
+    )}
+
+    {/* Decorative background */}
+    <div className={cn("absolute -right-8 -top-8 w-32 h-32 rounded-full opacity-[0.07] transition-transform duration-700 group-hover:scale-[2]", `bg-gradient-to-br ${gradientFrom} ${gradientTo}`)}></div>
+    <div className={cn("absolute -left-4 -bottom-4 w-20 h-20 rounded-full opacity-[0.04]", `bg-gradient-to-br ${gradientFrom} ${gradientTo}`)}></div>
+
+    <CardContent className="p-6 relative z-10">
+      {/* Header */}
+      <div className="flex items-center justify-between mb-5">
+        <div className="flex items-center gap-3">
+          <IconBox icon={Icon} className={cn("shadow-lg", color)} boxSize="w-11 h-11" iconSize={20} />
+          <div>
+            <h3 className="font-black text-slate-800 text-sm">{title}</h3>
+            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">{subtitle}</p>
+          </div>
         </div>
-      )}
-    </div>
-    <p className="text-slate-500 font-medium mb-1">{title}</p>
-    <div className="flex items-baseline gap-2">
-      <h3 className="text-2xl font-bold font-mono text-slate-900">{amount}</h3>
-      <span className="text-sm font-semibold text-slate-400">{currency}</span>
-    </div>
-  </div>
+      </div>
+
+      {/* Currency Items */}
+      <div className="space-y-3">
+        {items && items.length > 0 ? items.map((item: any, i: number) => (
+          <div
+            key={item.code}
+            className="flex items-center justify-between p-3 rounded-2xl bg-slate-50/80 hover:bg-slate-100/80 transition-all group/item border border-transparent hover:border-slate-200/50"
+          >
+            <div className="flex items-center gap-3">
+              <div className={cn(
+                "w-9 h-9 rounded-xl flex items-center justify-center text-[11px] font-black uppercase tracking-tighter shadow-sm transition-transform group-hover/item:scale-110",
+                color, "text-white"
+              )}>
+                {item.code}
+              </div>
+              <span className="text-xs font-bold text-slate-500">{item.symbol || item.code}</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="font-mono font-black text-slate-900 text-base tabular-nums">
+                {Math.abs(item.balance ?? item.total ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </span>
+              <span className="text-[10px] font-bold text-slate-400">{item.symbol || item.code}</span>
+            </div>
+          </div>
+        )) : (
+          <div className="text-center py-6 text-slate-400 font-medium text-xs bg-slate-50 rounded-2xl border border-dashed border-slate-200">
+            {emptyText || 'لا توجد بيانات'}
+          </div>
+        )}
+      </div>
+
+
+    </CardContent>
+  </Card>
 );
 
+// ─── Dashboard Component ────────────────────────────────────────────────
 const Dashboard = () => {
+  const [data, setData] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const router = useRouter();
+
+  const handleNavigate = (entry: any) => {
+    let path = '/vouchers/journal';
+    if (entry.type === 'RECEIPT') path = '/vouchers/receipts';
+    if (entry.type === 'PAYMENT') path = '/vouchers/payments';
+    router.push(`${path}?id=${entry.id}`);
+  };
+
+  useEffect(() => {
+    const fetchDashboard = async () => {
+      try {
+        const res = await axios.get(`${API_BASE}/dashboard`, AUTH_HEADER);
+        setData(res.data);
+      } catch (error) {
+        console.error('Failed to fetch dashboard data', error);
+        toast.error('فشل تحميل بيانات اللوحة');
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchDashboard();
+  }, []);
+
   return (
-    <div className="space-y-8">
-      <div className="bg-white/80 backdrop-blur-xl p-6 rounded-[2.5rem] border border-white shadow-2xl shadow-blue-500/5 flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
-        <PageHeader
-          icon={LayoutDashboard}
-          title="نظرة عامة"
-          description="مرحباً بك مجدداً، إليك ملخص الوضع المالي للصندوق"
-          iconClassName="bg-gradient-to-br from-blue-600 to-indigo-700 shadow-blue-200"
-          iconSize={24}
-        />
+    <div className="space-y-8 animate-in fade-in duration-500">
+      {/* Header */}
+      <PageHeader
+        icon={LayoutDashboard}
+        title="نظرة عامة"
+        description="مرحباً بك مجدداً، إليك ملخص الوضع المالي للصندوق"
+        iconClassName="bg-gradient-to-br from-blue-600 to-indigo-700 shadow-blue-200"
+        iconSize={24}
+      >
         <div className="flex gap-2">
           <div className="flex items-center gap-3 bg-emerald-50 px-5 py-2.5 rounded-2xl border border-emerald-100 shadow-sm">
             <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></div>
             <span className="text-emerald-700 font-black text-xs">البيانات محدثة لحظياً</span>
           </div>
         </div>
-      </div>
+      </PageHeader>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <StatCard
-          title="إجمالي الأصول"
-          amount="850,240"
-          currency="SAR"
+      {/* ─── Multi-Currency Summary Cards ──────────────── */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {/* Assets by Currency */}
+        <CurrencyCard
+          title="أرصدة الأصول"
+          subtitle="All-Time Balances"
           icon={Wallet}
-          trend="up"
-          trendValue="12"
           color="bg-blue-600"
+          gradientFrom="from-blue-500"
+          gradientTo="to-indigo-600"
+          items={data?.assetsByCurrency}
+
+          loading={loading}
+          emptyText="لا توجد أرصدة أصول مسجلة"
         />
-        <StatCard
+
+        {/* Revenue by Currency (current month) */}
+        <CurrencyCard
           title="إيرادات الشهر"
-          amount="42,300"
-          currency="SAR"
+          subtitle="Current Month Revenue"
           icon={ArrowUpRight}
-          trend="up"
-          trendValue="5.4"
           color="bg-emerald-600"
+          gradientFrom="from-emerald-500"
+          gradientTo="to-teal-600"
+          items={data?.revenueByCurrency}
+
+          loading={loading}
+          emptyText="لا توجد إيرادات هذا الشهر"
         />
-        <StatCard
-          title="المصاريف الخيرية"
-          amount="15,800"
-          currency="SAR"
-          icon={Briefcase}
-          trend="down"
-          trendValue="2.1"
+
+        {/* Expenses by Currency (current month) */}
+        <CurrencyCard
+          title="مصاريف الشهر"
+          subtitle="Current Month Expenses"
+          icon={ArrowDownRight}
           color="bg-rose-600"
-        />
-        <StatCard
-          title="صافي الفائض"
-          amount="26,500"
-          currency="SAR"
-          icon={TrendingUp}
-          trend="up"
-          trendValue="8.7"
-          color="bg-amber-600"
+          gradientFrom="from-rose-500"
+          gradientTo="to-pink-600"
+          items={data?.expenseByCurrency}
+
+          loading={loading}
+          emptyText="لا توجد مصاريف هذا الشهر"
         />
       </div>
 
+      {/* ─── Recent Transactions + Expense Breakdown ──────────────── */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        <div className="lg:col-span-2 bg-white p-8 rounded-2xl shadow-sm border border-slate-100">
-          <div className="flex justify-between items-center mb-8 border-b border-slate-50 pb-4">
+        <Card className="lg:col-span-2 shadow-sm border-slate-100 rounded-3xl overflow-hidden">
+          <CardHeader className="border-b border-slate-100 bg-slate-50/50 pb-6">
             <PageHeader
-              icon={History}
+              icon={HistoryIcon}
               title="النشاط المالي الأخير"
-              description="Latest Transaction Logs"
-              iconClassName="bg-slate-100 text-slate-500"
-              iconSize={18}
+              description="أحدث العمليات المسجلة"
+              iconClassName="bg-white text-slate-500 shadow-sm"
+              iconSize={16}
+              variant="simple"
             />
-            <button className="text-blue-600 font-bold hover:underline text-xs bg-blue-50 px-4 py-2 rounded-xl transition-all">عرض الكل</button>
-          </div>
+          </CardHeader>
+          <CardContent className="p-0">
+            <div className="divide-y divide-slate-100">
+              {loading ? (
+                <div className="flex justify-center py-10"><Loader2 className="animate-spin text-slate-300" /></div>
+              ) : data?.recentTransactions?.length > 0 ? (data.recentTransactions.map((entry: any) => (
+                <div
+                  key={entry.id}
+                  onClick={() => handleNavigate(entry)}
+                  className="flex items-center justify-between p-4 hover:bg-slate-50/80 transition-colors group cursor-pointer"
+                >
+                  <div className="flex items-center gap-4">
+                    <div className="w-10 h-10 rounded-xl bg-slate-50 flex flex-col items-center justify-center border border-slate-100 group-hover:border-blue-200 group-hover:bg-blue-50 transition-colors shrink-0 shadow-sm">
+                      <span className="text-sm font-black text-slate-400 group-hover:text-blue-500 uppercase leading-none mb-0.5">
+                        #{entry.entryNumber}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2 text-[11px] text-slate-800">
+                      <span>{new Date(entry.date).toLocaleDateString('ar-AR')}</span>
+                    </div>
+                    <div>
+                      <h4 className="font-bold text-slate-800 text-sm mb-0.5 group-hover:text-blue-700 transition-colors">{entry.description || 'بدون وصف'}</h4>
 
-          <div className="space-y-6">
-            {[1, 2, 3, 4].map((i) => (
-              <div key={i} className="flex items-center justify-between py-4 border-b border-slate-50 last:border-0 hover:bg-slate-50 px-2 rounded-xl transition-colors">
-                <div className="flex items-center gap-4">
-                  <IconBox icon={History} className="bg-slate-100 text-slate-500" boxSize="w-12 h-12" iconSize={20} />
-                  <div>
-                    <h4 className="font-bold text-slate-900">سداد فواتير طبية للعائلة</h4>
-                    <p className="text-sm text-slate-400">14 فبراير 2026 • رقم القيد: #10{i}4</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-4 text-left">
+                    <div className="text-right">
+                      <p className="font-mono font-black text-slate-900 text-sm">
+                        {Number(entry.originalAmount || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                      </p>
+                      <div className="flex items-center justify-end gap-1">
+                        <p className="text-[10px] text-slate-400 font-bold uppercase">{entry.currencyCode}</p>
+                        <span className="text-[10px] text-slate-300 font-bold">{entry.currencySymbol}</span>
+                      </div>
+                    </div>
+                    <Badge variant="secondary" className="font-bold h-fit">{entry.branch?.name}</Badge>
                   </div>
                 </div>
-                <div className="text-left">
-                  <span className="font-bold font-mono text-red-600">-1,200.00 SAR</span>
-                  <p className="text-xs text-slate-400 uppercase">Debited from Fund</p>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
+              ))) : (
+                <div className="text-center py-12 text-slate-400 font-medium">لا توجد عمليات حديثة</div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
 
-        <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-100">
-          <div className="mb-8 border-b border-slate-50 pb-4">
+        <Card className="shadow-sm border-slate-100 rounded-3xl overflow-hidden flex flex-col">
+          <CardHeader className="border-b border-slate-100 bg-slate-50/50 pb-6">
             <PageHeader
               icon={Activity}
-              title="توزيع الأرصدة"
-              description="Fund-wise Allocation"
-              iconClassName="bg-blue-50 text-blue-600"
-              iconSize={18}
+              title="توزيع المصاريف"
+              description="حسب التصنيف"
+              iconClassName="bg-blue-50 text-blue-600 shadow-sm"
+              iconSize={16}
+              variant="simple"
             />
-          </div>
-          <div className="space-y-6">
-            <div>
-              <div className="flex justify-between text-sm mb-2">
-                <span className="text-slate-600 font-medium">الفرع الرئيسي (الرياض)</span>
-                <span className="font-bold">75%</span>
-              </div>
-              <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
-                <div className="h-full bg-blue-600 rounded-full" style={{ width: '75%' }}></div>
-              </div>
+          </CardHeader>
+          <CardContent className="p-6 flex-1 flex flex-col justify-between">
+            <div className="space-y-6">
+              {loading ? (
+                <div className="flex justify-center py-10"><Loader2 className="animate-spin text-slate-300" /></div>
+              ) : data?.expenseBreakdown?.length > 0 ? (
+                data.expenseBreakdown.map((item: any) => (
+                  <div key={item.name} className="group">
+                    <div className="flex justify-between items-center text-sm mb-2">
+                      <span className="text-slate-700 font-bold group-hover:text-blue-600 transition-colors">{item.name}</span>
+                      <span className="font-bold font-mono text-slate-900 bg-slate-50 px-2 py-1 rounded-md text-xs">{Math.abs(item.value).toLocaleString()} <span className="text-[9px] text-slate-400 tracking-tighter">{data?.baseCurrencySymbol || data?.baseCurrencyCode || 'ر.س'}</span></span>
+                    </div>
+                    <div className="w-full h-2.5 bg-slate-100 rounded-full overflow-hidden shadow-inner">
+                      <div
+                        className="h-full rounded-full transition-all duration-1000 ease-out relative"
+                        style={{
+                          width: `${Math.min(100, Math.max(5, (Math.abs(item.value) / Math.abs(data.monthlyExpenses || 1)) * 100))}%`,
+                          backgroundColor: item.color
+                        }}
+                      >
+                        <div className="absolute inset-0 bg-white/20 w-full h-full"></div>
+                      </div>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="text-center py-10 text-slate-400 font-medium bg-slate-50 rounded-xl border border-dashed border-slate-200">لا توجد مصاريف هذا الشهر</div>
+              )}
             </div>
-            <div>
-              <div className="flex justify-between text-sm mb-2">
-                <span className="text-slate-600 font-medium">فرع جدة (دولار هائل)</span>
-                <span className="font-bold">15%</span>
-              </div>
-              <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
-                <div className="h-full bg-emerald-500 rounded-full" style={{ width: '15%' }}></div>
-              </div>
-            </div>
-            <div>
-              <div className="flex justify-between text-sm mb-2">
-                <span className="text-slate-600 font-medium">فرع الدمام</span>
-                <span className="font-bold">10%</span>
-              </div>
-              <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
-                <div className="h-full bg-amber-500 rounded-full" style={{ width: '10%' }}></div>
-              </div>
-            </div>
-          </div>
 
-          <div className="mt-8 p-4 bg-blue-50 rounded-xl border border-blue-100">
-            <p className="text-sm text-blue-800 leading-relaxed font-medium">
-              ملاحظة: جميع الأرصدة أعلاه معروضة بـ <span className="underline font-bold">العملة الأساسية (SAR)</span> لضمان دقة التقرير الموحد.
-            </p>
-          </div>
-        </div>
+            <div className="mt-8 p-4 bg-blue-50/50 rounded-xl border border-blue-100/50 relative overflow-hidden">
+              <div className="absolute top-0 right-0 w-16 h-16 bg-blue-100 rounded-full blur-xl -mr-8 -mt-8 opacity-50"></div>
+              <p className="text-xs text-blue-800 leading-relaxed font-bold relative z-10 flex gap-2">
+                <span className="w-1.5 h-1.5 rounded-full bg-blue-500 mt-1 shrink-0"></span>
+                الأرصدة الإجمالية معروضة بالعملة الأساسية ({data?.baseCurrencySymbol || data?.baseCurrencyCode || 'ر.س'}) مع تفاصيل كل عملة على حدة.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
       </div>
     </div>
   );

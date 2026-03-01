@@ -15,6 +15,16 @@ import {
 import { cn } from '@/lib/utils';
 import { IconBox } from '@/components/ui/IconBox';
 import { PageHeader } from '@/components/ui/PageHeader';
+import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
+import {
+    Table,
+    TableBody,
+    TableCell,
+    TableHead,
+    TableHeader,
+    TableRow,
+} from '@/components/ui/table';
 
 const AuditLogPage = () => {
     const [logs] = useState([
@@ -36,75 +46,74 @@ const AuditLogPage = () => {
     return (
         <div className="max-w-5xl mx-auto space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-700">
             {/* Standard Premium Header */}
-            <div className="bg-white/80 backdrop-blur-xl p-6 rounded-[2.5rem] border border-white shadow-2xl shadow-blue-500/5 flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
-                <PageHeader
-                    icon={Shield}
-                    title="سجل العمليات"
-                    description="Security Audit & Activity Logs"
-                    iconClassName="bg-gradient-to-br from-slate-800 to-slate-950 shadow-slate-200"
-                />
+            <PageHeader
+                icon={Shield}
+                title="سجل العمليات"
+                description="Security Audit & Activity Logs"
+                iconClassName="bg-gradient-to-br from-slate-800 to-slate-950 shadow-slate-200"
+            >
                 <div className="relative">
                     <Search className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-                    <input
+                    <Input
                         type="text"
                         placeholder="بحث في السجلات..."
-                        className="pr-10 pl-4 py-2 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none w-56 text-xs font-bold"
+                        className="pr-10 pl-4 py-2 bg-white border-slate-200 rounded-xl focus-visible:ring-blue-500 w-56 text-xs font-bold h-10"
                     />
                 </div>
-            </div>
+            </PageHeader>
 
             <div className="bg-white rounded-[2rem] shadow-sm border border-slate-100 overflow-hidden">
-                <table className="w-full text-right">
-                    <thead className="bg-slate-50/50 text-slate-500 text-[10px] uppercase tracking-widest font-black border-b border-slate-100">
-                        <tr>
-                            <th className="py-3 px-6">المستخدم</th>
-                            <th className="py-3 px-6">العملية</th>
-                            <th className="py-3 px-6">الهدف</th>
-                            <th className="py-3 px-6">التاريخ والوقت</th>
-                            <th className="py-3 px-6">التفاصيل</th>
-                            <th className="py-3 px-6"></th>
-                        </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-50">
+                <Table className="w-full text-right" dir="rtl">
+                    <TableHeader className="bg-slate-50/50 border-b border-slate-100">
+                        <TableRow className="hover:bg-slate-50/50 border-none">
+                            <TableHead className="py-3 px-6 text-slate-500 text-[10px] uppercase tracking-widest font-black text-right">المستخدم</TableHead>
+                            <TableHead className="py-3 px-6 text-slate-500 text-[10px] uppercase tracking-widest font-black text-right">العملية</TableHead>
+                            <TableHead className="py-3 px-6 text-slate-500 text-[10px] uppercase tracking-widest font-black text-right">الهدف</TableHead>
+                            <TableHead className="py-3 px-6 text-slate-500 text-[10px] uppercase tracking-widest font-black text-right">التاريخ والوقت</TableHead>
+                            <TableHead className="py-3 px-6 text-slate-500 text-[10px] uppercase tracking-widest font-black text-right">التفاصيل</TableHead>
+                            <TableHead className="py-3 px-6"></TableHead>
+                        </TableRow>
+                    </TableHeader>
+                    <TableBody className="divide-y divide-slate-50">
                         {logs.map((log) => (
-                            <tr key={log.id} className="hover:bg-slate-50/50 transition-colors group">
-                                <td className="py-3 px-6">
+                            <TableRow key={log.id} className="hover:bg-slate-50/50 transition-colors group border-b-slate-50">
+                                <TableCell className="py-3 px-6">
                                     <div className="flex items-center gap-2">
                                         <div className="w-7 h-7 rounded-lg bg-slate-100 flex items-center justify-center text-slate-500 group-hover:bg-blue-100 group-hover:text-blue-600 transition-colors">
                                             <User size={14} />
                                         </div>
                                         <span className="font-bold text-slate-800 text-xs">{log.user}</span>
                                     </div>
-                                </td>
-                                <td className="py-3 px-6">
+                                </TableCell>
+                                <TableCell className="py-3 px-6">
                                     <div className="flex items-center gap-2">
                                         {getActionIcon(log.action)}
                                         <span className="text-[10px] font-black uppercase tracking-tighter">{log.action}</span>
                                     </div>
-                                </td>
-                                <td className="py-3 px-6">
+                                </TableCell>
+                                <TableCell className="py-3 px-6">
                                     <span className="px-2 py-0.5 bg-slate-100 rounded text-[9px] font-black text-slate-500 uppercase">
                                         {log.entity}: {log.entityId}
                                     </span>
-                                </td>
-                                <td className="py-3 px-6 text-slate-500 text-[11px] font-mono">
+                                </TableCell>
+                                <TableCell className="py-3 px-6 text-slate-500 text-[11px] font-mono">
                                     <div className="flex items-center gap-2">
                                         <Calendar size={12} />
                                         <span>{log.date}</span>
                                     </div>
-                                </td>
-                                <td className="py-3 px-6 text-slate-600 text-xs max-w-xs truncate font-medium">
+                                </TableCell>
+                                <TableCell className="py-3 px-6 text-slate-600 text-xs max-w-xs truncate font-medium">
                                     {log.details}
-                                </td>
-                                <td className="py-3 px-6 text-left">
-                                    <button className="p-1.5 text-slate-300 hover:text-blue-600 transition-colors">
+                                </TableCell>
+                                <TableCell className="py-3 px-6 text-left">
+                                    <Button variant="ghost" size="icon" className="w-8 h-8 text-slate-300 hover:text-blue-600 hover:bg-transparent transition-colors p-0 rounded-full">
                                         <Eye size={16} />
-                                    </button>
-                                </td>
-                            </tr>
+                                    </Button>
+                                </TableCell>
+                            </TableRow>
                         ))}
-                    </tbody>
-                </table>
+                    </TableBody>
+                </Table>
             </div>
 
             <div className="p-4 bg-emerald-50/50 border border-emerald-100/50 rounded-2xl flex items-center gap-3">

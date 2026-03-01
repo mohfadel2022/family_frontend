@@ -6,6 +6,24 @@ import { Search, Calendar, Download, Printer, ArrowRightLeft, FileText, Loader2,
 import axios from 'axios';
 import { IconBox } from '@/components/ui/IconBox';
 import { PageHeader } from '@/components/ui/PageHeader';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
+import {
+    Table,
+    TableBody,
+    TableCell,
+    TableHead,
+    TableHeader,
+    TableRow,
+    TableFooter,
+} from '@/components/ui/table';
 
 const API_BASE = 'http://localhost:4000/api/meta';
 const AUTH_HEADER = { headers: { Authorization: 'Bearer mock-token' } };
@@ -59,24 +77,81 @@ const AccountStatementPage = () => {
     return (
         <div className="max-w-6xl mx-auto space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-700">
             {/* Header */}
-            <div className="bg-white/80 backdrop-blur-xl p-6 rounded-[2.5rem] border border-white shadow-2xl shadow-blue-500/5 flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
-                <PageHeader
-                    icon={FileText}
-                    title="كشف حساب تفصيلي"
-                    description="Detailed Transaction Ledger"
-                    iconClassName="bg-gradient-to-br from-blue-600 to-indigo-700 shadow-blue-200"
-                    iconSize={24}
-                />
+            <PageHeader
+                icon={FileText}
+                title="كشف حساب تفصيلي"
+                description="Detailed Transaction Ledger"
+                iconClassName="bg-gradient-to-br from-blue-600 to-indigo-700 shadow-blue-200"
+                iconSize={24}
+            >
                 <div className="flex gap-2">
-                    <button className="p-2.5 border border-slate-200 rounded-xl hover:bg-slate-50 text-slate-600 shadow-sm transition-all group">
-                        <Printer size={18} />
-                    </button>
-                    <button className="flex items-center gap-2 px-5 py-2.5 bg-slate-900 text-white rounded-xl hover:bg-black transition-all font-black text-xs shadow-lg shadow-slate-200">
-                        <Download size={16} />
-                        تصدير كـ PDF
-                    </button>
+                    <Button
+                        variant="outline"
+                        disabled={!report}
+                        onClick={() => {
+                            if (!report) return;
+                            import('@/lib/exportUtils').then(({ exportToExcel }) => {
+                                const exportData = report.entries.map((e: any) => ({
+                                    Date: new Date(e.date).toLocaleDateString('en-CA'),
+                                    EntryNumber: e.entryNumber,
+                                    Description: e.description,
+                                    Debit: e.debit,
+                                    Credit: e.credit,
+                                    Balance: e.balance
+                                }));
+                                exportToExcel(
+                                    exportData,
+                                    `Account_Statement_${accountId}`,
+                                    ['التاريخ', 'رقم القيد', 'البيان', 'مدين', 'دائن', 'الرصيد'],
+                                    ['Date', 'EntryNumber', 'Description', 'Debit', 'Credit', 'Balance']
+                                );
+                            });
+                        }}
+                        className="flex items-center gap-2 px-4 rounded-xl shadow-sm h-11 border-slate-200 text-slate-700 hover:bg-slate-50 font-black text-xs transition-all disabled:opacity-50"
+                    >
+                        <Download size={16} className="text-emerald-500" />
+                        Excel
+                    </Button>
+                    <Button
+                        disabled={!report}
+                        onClick={() => {
+                            if (!report) return;
+                            import('@/lib/exportUtils').then(({ exportToPDF }) => {
+                                const selectedAccount = accounts.find(a => a.id === accountId);
+                                const subtitle = selectedAccount ? `الحساب: ${selectedAccount.code} - ${selectedAccount.name}` : '';
+
+                                const exportData = report.entries.map((e: any) => ({
+                                    Date: new Date(e.date).toLocaleDateString('en-CA'),
+                                    EntryNumber: e.entryNumber,
+                                    Description: e.description,
+                                    Debit: Number(e.debit).toLocaleString(undefined, { minimumFractionDigits: 2 }),
+                                    Credit: Number(e.credit).toLocaleString(undefined, { minimumFractionDigits: 2 }),
+                                    Balance: Number(e.balance).toLocaleString(undefined, { minimumFractionDigits: 2 })
+                                }));
+
+                                exportToPDF(
+                                    exportData,
+                                    `Account_Statement_${accountId}`,
+                                    'كشف حساب تفصيلي',
+                                    ['التاريخ', 'رقم القيد', 'البيان', 'مدين', 'دائن', 'الرصيد'],
+                                    ['Date', 'EntryNumber', 'Description', 'Debit', 'Credit', 'Balance'],
+                                    subtitle,
+                                    {
+                                        Description: 'ملخص الرصيد',
+                                        Debit: `الافتتاحي: ${report.openingBalance.toLocaleString(undefined, { minimumFractionDigits: 2 })}`,
+                                        Credit: '',
+                                        Balance: `الختامي: ${report.closingBalance.toLocaleString(undefined, { minimumFractionDigits: 2 })}`
+                                    }
+                                );
+                            });
+                        }}
+                        className="flex items-center gap-2 px-4 rounded-xl shadow-lg h-11 bg-slate-900 text-white hover:bg-black font-black text-xs transition-all disabled:opacity-50"
+                    >
+                        <Download size={16} className="text-rose-400" />
+                        PDF
+                    </Button>
                 </div>
-            </div>
+            </PageHeader>
 
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
                 {/* Sidebar Filter */}
@@ -85,26 +160,25 @@ const AccountStatementPage = () => {
                         <div className="space-y-1.5">
                             <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mr-1">الحساب المحاسبي</label>
                             <div className="relative">
-                                <Search className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
-                                <select
-                                    disabled={fetchingAccounts}
-                                    className="w-full pr-9 pl-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 transition-all font-bold text-xs appearance-none cursor-pointer"
-                                    value={accountId}
-                                    onChange={(e) => setAccountId(e.target.value)}
-                                >
-                                    <option value="">اختر الحساب...</option>
-                                    {accounts.map(acc => (
-                                        <option key={acc.id} value={acc.id}>{acc.code} - {acc.name}</option>
-                                    ))}
-                                </select>
+                                <Search className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 z-10" size={14} />
+                                <Select disabled={fetchingAccounts} value={accountId} onValueChange={setAccountId}>
+                                    <SelectTrigger className="w-full pr-10 pl-3 h-11 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 transition-all font-bold text-xs" dir="rtl">
+                                        <SelectValue placeholder="اختر الحساب..." />
+                                    </SelectTrigger>
+                                    <SelectContent dir="rtl">
+                                        {accounts.map(acc => (
+                                            <SelectItem key={acc.id} value={acc.id}>{acc.code} - {acc.name}</SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
                             </div>
                         </div>
 
                         <div className="space-y-1.5">
                             <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mr-1">من تاريخ</label>
-                            <input
+                            <Input
                                 type="date"
-                                className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 transition-all font-bold text-xs"
+                                className="w-full h-11 px-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-blue-500 transition-all font-bold text-xs"
                                 value={dateRange.start}
                                 onChange={(e) => setDateRange({ ...dateRange, start: e.target.value })}
                             />
@@ -112,22 +186,22 @@ const AccountStatementPage = () => {
 
                         <div className="space-y-1.5">
                             <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mr-1">إلى تاريخ</label>
-                            <input
+                            <Input
                                 type="date"
-                                className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 transition-all font-bold text-xs"
+                                className="w-full h-11 px-4 bg-slate-50 border border-slate-200 rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-blue-500 transition-all font-bold text-xs"
                                 value={dateRange.end}
                                 onChange={(e) => setDateRange({ ...dateRange, end: e.target.value })}
                             />
                         </div>
 
-                        <button
+                        <Button
                             disabled={loading || !accountId}
                             onClick={fetchReport}
-                            className="w-full py-3 bg-blue-600 text-white rounded-xl font-black hover:bg-blue-700 transition-all shadow-lg shadow-blue-100 flex items-center justify-center gap-2 group text-xs disabled:opacity-50"
+                            className="w-full h-12 bg-blue-600 text-white rounded-xl font-black hover:bg-blue-700 transition-all shadow-lg shadow-blue-100 flex items-center justify-center gap-2 group text-xs disabled:opacity-50"
                         >
                             {loading ? <RefreshCcw size={16} className="animate-spin" /> : <Search size={16} className="group-hover:scale-110 transition-transform" />}
                             تحديث الكشف
-                        </button>
+                        </Button>
                     </div>
 
                     {report && (
@@ -145,13 +219,11 @@ const AccountStatementPage = () => {
                                         <span className="text-slate-400">الرصيد الافتتاحي</span>
                                         <span className="font-mono text-white">{report.openingBalance.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
                                     </div>
-                                    <div className="flex justify-between items-center text-[11px] font-bold">
-                                        <span className="text-slate-400">إجمالي مدين</span>
-                                        <span className="font-mono text-emerald-400">+{totalDebit.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
-                                    </div>
-                                    <div className="flex justify-between items-center text-[11px] font-bold">
-                                        <span className="text-slate-400">إجمالي دائن</span>
-                                        <span className="font-mono text-rose-400">-{totalCredit.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                                    <div className="pt-2 border-t border-slate-800/50 space-y-3">
+                                        <div className="flex justify-between items-center text-[10px] font-bold">
+                                            <span className="text-slate-500 uppercase tracking-tighter">بداية الفترة</span>
+                                            <span className="font-mono text-blue-300">{report.openingBalance.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                                        </div>
                                     </div>
                                     <div className="pt-4 border-t border-slate-800 space-y-1">
                                         <p className="text-[10px] font-black text-blue-400 uppercase tracking-widest">Net Closing Balance</p>
@@ -177,61 +249,59 @@ const AccountStatementPage = () => {
                                 </div>
                             </div>
                         ) : (
-                            <table className="w-full text-right">
-                                <thead className="bg-slate-50/70 text-slate-500 text-[10px] uppercase tracking-widest font-black border-b border-slate-100">
-                                    <tr>
-                                        <th className="py-4 px-6">التاريخ</th>
-                                        <th className="py-4 px-6">رقم القيد</th>
-                                        <th className="py-4 px-6">البيان والشرح</th>
-                                        <th className="py-4 px-6 text-center">مدين</th>
-                                        <th className="py-4 px-6 text-center">دائن</th>
-                                        <th className="py-4 px-6 text-center bg-blue-50/30">الرصيد</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-slate-50">
-                                    <tr className="bg-slate-50 font-bold italic text-slate-500">
-                                        <td colSpan={5} className="py-3 px-6 text-[10px] uppercase">رصيد أول المدة</td>
-                                        <td className="py-3 px-6 text-center font-mono text-xs">{report.openingBalance.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
-                                    </tr>
+                            <Table className="w-full text-right" dir="rtl">
+                                <TableHeader className="bg-slate-50/70 border-b border-slate-100">
+                                    <TableRow className="hover:bg-transparent border-none">
+                                        <TableHead className="py-4 px-6 text-slate-500 text-[10px] uppercase tracking-widest font-black text-right">التاريخ</TableHead>
+                                        <TableHead className="py-4 px-6 text-slate-500 text-[10px] uppercase tracking-widest font-black text-right">رقم القيد</TableHead>
+                                        <TableHead className="py-4 px-6 text-slate-500 text-[10px] uppercase tracking-widest font-black text-right">البيان والشرح</TableHead>
+                                        <TableHead className="py-4 px-6 text-slate-500 text-[10px] uppercase tracking-widest font-black text-center">مدين</TableHead>
+                                        <TableHead className="py-4 px-6 text-slate-500 text-[10px] uppercase tracking-widest font-black text-center">دائن</TableHead>
+                                        <TableHead className="py-4 px-6 text-slate-500 text-[10px] uppercase tracking-widest font-black text-center bg-blue-50/30">الرصيد</TableHead>
+                                    </TableRow>
+                                </TableHeader>
+                                <TableBody className="divide-y divide-slate-50">
+                                    <TableRow className="bg-slate-50 font-bold italic text-slate-500 hover:bg-slate-50 border-none">
+                                        <TableCell colSpan={5} className="py-3 px-6 text-[10px] uppercase">رصيد أول المدة</TableCell>
+                                        <TableCell className="py-3 px-6 text-center font-mono text-xs">{report.openingBalance.toLocaleString(undefined, { minimumFractionDigits: 2 })}</TableCell>
+                                    </TableRow>
                                     {report.entries.map((entry: any, i: number) => (
-                                        <tr key={i} className="hover:bg-slate-50/50 transition-colors group">
-                                            <td className="py-3.5 px-6 shrink-0">
+                                        <TableRow key={i} className="hover:bg-slate-50/50 transition-colors group border-b-slate-50 border-none">
+                                            <TableCell className="py-3.5 px-6 shrink-0">
                                                 <span className="text-[10px] font-black text-slate-500">{new Date(entry.date).toLocaleDateString('ar-SA')}</span>
-                                            </td>
-                                            <td className="py-3.5 px-6">
+                                            </TableCell>
+                                            <TableCell className="py-3.5 px-6">
                                                 <span className="px-2 py-0.5 bg-slate-100 rounded text-[10px] font-black text-slate-600 group-hover:bg-blue-600 group-hover:text-white transition-all cursor-default">
                                                     #{entry.entryNumber}
                                                 </span>
-                                            </td>
-                                            <td className="py-3.5 px-6 text-xs font-bold text-slate-700 max-w-[200px] truncate">{entry.description}</td>
-                                            <td className="py-3.5 px-6 font-mono text-center text-xs font-black text-emerald-600">
+                                            </TableCell>
+                                            <TableCell className="py-3.5 px-6 text-xs font-bold text-slate-700 max-w-[200px] truncate">{entry.description}</TableCell>
+                                            <TableCell className="py-3.5 px-6 font-mono text-center text-xs font-black text-emerald-600">
                                                 {entry.debit > 0 ? entry.debit.toLocaleString(undefined, { minimumFractionDigits: 2 }) : '-'}
-                                            </td>
-                                            <td className="py-3.5 px-6 font-mono text-center text-xs font-black text-rose-600">
+                                            </TableCell>
+                                            <TableCell className="py-3.5 px-6 font-mono text-center text-xs font-black text-rose-600">
                                                 {entry.credit > 0 ? entry.credit.toLocaleString(undefined, { minimumFractionDigits: 2 }) : '-'}
-                                            </td>
-                                            <td className="py-3.5 px-6 font-mono text-center font-black text-slate-900 bg-blue-50/20 text-xs">
+                                            </TableCell>
+                                            <TableCell className="py-3.5 px-6 font-mono text-center font-black text-slate-900 bg-blue-50/20 text-xs">
                                                 {entry.balance.toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                                            </td>
-                                        </tr>
+                                            </TableCell>
+                                        </TableRow>
                                     ))}
                                     {report.entries.length === 0 && (
-                                        <tr>
-                                            <td colSpan={6} className="py-20 text-center text-slate-400 font-bold text-sm italic">لا توجد حركات مسجلة في هذه الفترة</td>
-                                        </tr>
+                                        <TableRow>
+                                            <TableCell colSpan={6} className="py-20 text-center text-slate-400 font-bold text-sm italic">لا توجد حركات مسجلة في هذه الفترة</TableCell>
+                                        </TableRow>
                                     )}
-                                </tbody>
-                                <tfoot className="bg-slate-50 text-slate-900 font-black text-[10px] uppercase tracking-widest">
-                                    <tr>
-                                        <td colSpan={3} className="py-4 px-6">الرصيد الختامي للحساب</td>
-                                        <td className="text-center font-mono text-emerald-600">{totalDebit.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
-                                        <td className="text-center font-mono text-rose-600">({totalCredit.toLocaleString(undefined, { minimumFractionDigits: 2 })})</td>
-                                        <td className="text-center font-mono text-blue-600 bg-blue-50/40 text-sm">
-                                            {report.closingBalance.toLocaleString(undefined, { minimumFractionDigits: 2 })} {report.currency}
-                                        </td>
-                                    </tr>
-                                </tfoot>
-                            </table>
+                                </TableBody>
+                                <TableFooter className="bg-slate-900 text-white font-black text-[10px] uppercase tracking-widest border-none">
+                                    <TableRow className="hover:bg-slate-900 border-none">
+                                        <TableCell colSpan={5} className="py-5 px-6 text-right">إجمالي الرصيد الختامي (Closing Balance)</TableCell>
+                                        <TableCell className="text-center font-mono text-blue-400 bg-blue-500/10 text-lg border-r border-slate-800">
+                                            {report.closingBalance.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                        </TableCell>
+                                    </TableRow>
+                                </TableFooter>
+                            </Table>
                         )}
                     </div>
                 </div>

@@ -9,14 +9,17 @@ export default function LogoutPage() {
     const router = useRouter();
 
     useEffect(() => {
-        // Clear session logic here (currently using mock-token)
-        // localStorage.removeItem('token'); 
-
         const logout = async () => {
-            // Simulate a brief delay for effect
-            await new Promise(resolve => setTimeout(resolve, 800));
+            // Clear all session data
+            localStorage.removeItem('token');
+            localStorage.removeItem('user');
+            sessionStorage.clear();
+            // Expire the auth cookie so middleware blocks protected routes
+            document.cookie = 'auth-token=; path=/; max-age=0; SameSite=Strict';
+
+            await new Promise(resolve => setTimeout(resolve, 600));
             toast.success('تم تسجيل الخروج بنجاح');
-            router.push('/login');
+            router.replace('/login');
         };
 
         logout();

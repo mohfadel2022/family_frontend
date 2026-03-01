@@ -2,10 +2,19 @@
 
 import React, { useState, useEffect } from 'react';
 import { cn } from '@/lib/utils';
-import { FilePieChart, Calendar, Download, Building2, TrendingUp, TrendingDown, ArrowUpRight, ArrowDownRight, RefreshCcw, Loader2, Printer, Info } from 'lucide-react';
+import { FilePieChart, Calendar, Download, Building2, TrendingUp, TrendingDown, ArrowUpRight, ArrowDownRight, RefreshCcw, Loader2, Printer, Info, Layers } from 'lucide-react';
 import axios from 'axios';
 import { IconBox } from '@/components/ui/IconBox';
 import { PageHeader } from '@/components/ui/PageHeader';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
 
 const API_BASE = 'http://localhost:4000/api/meta';
 const AUTH_HEADER = { headers: { Authorization: 'Bearer mock-token' } };
@@ -15,6 +24,7 @@ const IncomeStatementPage = () => {
     const [report, setReport] = useState<any>(null);
     const [loading, setLoading] = useState(true);
     const [baseCurrency, setBaseCurrency] = useState<any>(null);
+    const [maxLevel, setMaxLevel] = useState('all');
 
     const fetchReport = async () => {
         setLoading(true);
@@ -52,30 +62,135 @@ const IncomeStatementPage = () => {
 
     if (!report) return <div className="p-8 text-center text-rose-500 font-bold">خطأ في تحميل البيانات</div>;
 
+    const buildSortedTree = (items: any[]) => {
+        if (!items) return [];
+        const itemMap: Record<string, any> = {};
+        items.forEach(item => {
+            itemMap[item.id] = { ...item, children: [] };
+        });
+
+        const roots: any[] = [];
+        items.forEach(item => {
+            if (item.parentId && itemMap[item.parentId]) {
+                itemMap[item.parentId].children.push(itemMap[item.id]);
+            } else {
+                roots.push(itemMap[item.id]);
+            }
+        });
+
+        const flatten = (nodes: any[], level = 0): any[] => {
+            nodes.sort((a, b) => (a.code || '').localeCompare(b.code || '', undefined, { numeric: true }));
+            let result: any[] = [];
+            nodes.forEach(node => {
+                result.push({ ...node, level });
+                if (node.children.length > 0) {
+                    if (maxLevel === 'all' || level < parseInt(maxLevel)) {
+                        result = result.concat(flatten(node.children, level + 1));
+                    }
+                }
+            });
+            return result;
+        };
+
+        return flatten(roots);
+    };
+
+    const treeRevenues = buildSortedTree(report.revenues);
+    console.log(treeRevenues);
+    const treeExpenses = buildSortedTree(report.expenses);
+
     const currencyCode = baseCurrency?.code || '---';
 
     return (
         <div className="max-w-5xl mx-auto space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-700">
             {/* Premium Header */}
-            <div className="bg-white/80 backdrop-blur-xl p-6 rounded-[2.5rem] border border-white shadow-2xl shadow-blue-500/5 flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
-                <PageHeader
-                    icon={FilePieChart}
-                    title="قائمة الدخل"
-                    description={`Income Statement & Profitability Analytics (${baseCurrency?.code || '---'})`}
-                    iconClassName="bg-gradient-to-br from-emerald-500 to-teal-600 shadow-emerald-200"
-                    iconSize={24}
-                />
+            <PageHeader
+                icon={FilePieChart}
+                title="قائمة الدخل"
+                description={`Income Statement & Profitability Analytics (${baseCurrency?.code || '---'})`}
+                iconClassName="bg-gradient-to-br from-emerald-500 to-teal-600 shadow-emerald-200"
+                iconSize={24}
+                className="mb-8"
+            >
                 <div className="flex gap-2">
-                    <button className="flex items-center gap-2 px-4 py-2 border border-slate-200 rounded-xl hover:bg-slate-50 text-slate-600 transition-all font-bold text-xs shadow-sm">
-                        <Printer size={16} />
-                        <span>طباعة</span>
-                    </button>
-                    <button className="flex items-center gap-2 px-4 py-2 bg-slate-900 text-white rounded-xl hover:bg-black transition-all font-black text-xs shadow-lg shadow-slate-200">
-                        <Download size={16} />
-                        <span>تصدير Excel</span>
-                    </button>
+                    <Button
+                        variant="outline"
+                        onClick={() => {
+                            import('@/lib/exportUtils').then(({ exportToExcel }) => {
+                                const exportData = [
+                                    ...treeRevenues.map((r: any) => ({
+                                        Category: 'Income',
+                                        Name: '  '.repeat(r.level) + r.name,
+                                        Foreign: !r.isBase ? `${Number(r.foreignAmount).toFixed(2)} ${r.currency}` : '-',
+                                        Amount: r.amount.toFixed(2)
+                                    })),
+                                    { Category: 'Income', Name: 'Total Income', Foreign: '', Amount: report.totalRevenue },
+                                    ...treeExpenses.map((e: any) => ({
+                                        Category: 'Expenses',
+                                        Name: '  '.repeat(e.level) + e.name,
+                                        Foreign: !e.isBase ? `${Number(e.foreignAmount).toFixed(2)} ${e.currency}` : '-',
+                                        Amount: e.amount.toFixed(2)
+                                    })),
+                                    { Category: 'Expenses', Name: 'Total Expenses', Foreign: '', Amount: report.totalExpense },
+                                    { Category: 'Summary', Name: 'Net Income', Foreign: '', Amount: report.netIncome }
+                                ];
+                                exportToExcel(
+                                    exportData,
+                                    'Statement_Of_Income',
+                                    ['التصنيف', 'البيان', 'المبلغ (أجنبي)', `المبلغ (${currencyCode})`],
+                                    ['Category', 'Name', 'Foreign', 'Amount']
+                                );
+                            });
+                        }}
+                        className="flex items-center gap-2 px-4 rounded-xl shadow-sm h-11 border-slate-200 text-slate-700 hover:bg-slate-50 font-black text-xs transition-all"
+                    >
+                        <Download size={16} className="text-emerald-500" />
+                        Excel
+                    </Button>
+                    <Button
+                        onClick={() => {
+                            import('@/lib/exportUtils').then(({ exportToPDF }) => {
+                                const exportData = [
+                                    ...treeRevenues.map((r: any) => ({
+                                        Category: 'Income',
+                                        Name: '  '.repeat(r.level) + r.name,
+                                        Foreign: !r.isBase ? `${Number(r.foreignAmount).toLocaleString(undefined, { minimumFractionDigits: 2 })} ${r.currency}` : '-',
+                                        Amount: r.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })
+                                    })),
+                                    { Category: 'Income', Name: 'Total Income', Foreign: '', Amount: report.totalRevenue.toLocaleString(undefined, { minimumFractionDigits: 2 }) },
+                                    ...treeExpenses.map((e: any) => ({
+                                        Category: 'Expenses',
+                                        Name: '  '.repeat(e.level) + e.name,
+                                        Foreign: !e.isBase ? `${Number(e.foreignAmount).toLocaleString(undefined, { minimumFractionDigits: 2 })} ${e.currency}` : '-',
+                                        Amount: e.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })
+                                    })),
+                                    { Category: 'Expenses', Name: 'Total Expenses', Foreign: '', Amount: report.totalExpense.toLocaleString(undefined, { minimumFractionDigits: 2 }) },
+                                    { Category: 'Summary', Name: 'Net Income', Foreign: '', Amount: report.netIncome.toLocaleString(undefined, { minimumFractionDigits: 2 }) }
+                                ];
+                                const subtitle = dateRange.start && dateRange.end
+                                    ? `الفترة من ${dateRange.start} إلى ${dateRange.end}`
+                                    : 'كافة الفواتير المسجلة';
+
+                                exportToPDF(
+                                    exportData,
+                                    'Statement_Of_Income',
+                                    'قائمة الدخل',
+                                    ['التصنيف', 'البيان', 'المبلغ (أجنبي)', `المبلغ (${currencyCode})`],
+                                    ['Category', 'Name', 'Foreign', 'Amount'],
+                                    subtitle,
+                                    {
+                                        Amount: Number(report.netIncome).toLocaleString(undefined, { minimumFractionDigits: 2 })
+                                    }
+                                );
+                            });
+                        }}
+                        className="flex items-center gap-2 px-4 rounded-xl shadow-lg h-11 bg-slate-900 text-white hover:bg-black font-black text-xs transition-all"
+                    >
+                        <Download size={16} className="text-rose-400" />
+                        PDF
+                    </Button>
                 </div>
-            </div>
+            </PageHeader>
 
             {/* Filters */}
             <div className="bg-white p-4 rounded-3xl border border-slate-100 shadow-sm flex flex-wrap gap-4 items-center">
@@ -83,28 +198,47 @@ const IncomeStatementPage = () => {
                     <Calendar size={18} className="text-blue-500" />
                     <span>الفترة الزمنية:</span>
                 </div>
-                <div className="flex items-center gap-2 bg-slate-50 p-1 rounded-xl border border-slate-100">
-                    <input
+                <div className="flex items-center gap-2 bg-slate-50 p-1 rounded-xl border border-slate-100 h-11">
+                    <Input
                         type="date"
-                        className="bg-transparent px-3 py-1.5 outline-none font-mono text-xs font-bold text-slate-700"
+                        className="bg-transparent px-3 py-1.5 outline-none font-mono text-xs font-bold text-slate-700 border-none shadow-none focus-visible:ring-0 max-w-[140px]"
                         value={dateRange.start}
                         onChange={(e) => setDateRange({ ...dateRange, start: e.target.value })}
                     />
                     <span className="text-slate-300">/</span>
-                    <input
+                    <Input
                         type="date"
-                        className="bg-transparent px-3 py-1.5 outline-none font-mono text-xs font-bold text-slate-700"
+                        className="bg-transparent px-3 py-1.5 outline-none font-mono text-xs font-bold text-slate-700 border-none shadow-none focus-visible:ring-0 max-w-[140px]"
                         value={dateRange.end}
                         onChange={(e) => setDateRange({ ...dateRange, end: e.target.value })}
                     />
                 </div>
-                <button
+
+                <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-xl px-0 group h-11 w-40 overflow-hidden">
+                    <Select value={maxLevel} onValueChange={setMaxLevel}>
+                        <SelectTrigger className="w-full bg-transparent border-0 ring-offset-transparent focus:ring-0 shadow-none font-black text-xs text-slate-700 h-full !outline-none" dir="rtl">
+                            <div className="flex items-center gap-2">
+                                <Layers size={16} className="text-blue-500" />
+                                <SelectValue placeholder="المستوى" />
+                            </div>
+                        </SelectTrigger>
+                        <SelectContent dir="rtl">
+                            <SelectItem value="all">جميع المستويات</SelectItem>
+                            <SelectItem value="0">المستوى 1</SelectItem>
+                            <SelectItem value="1">المستوى 2</SelectItem>
+                            <SelectItem value="2">المستوى 3</SelectItem>
+                            <SelectItem value="3">المستوى 4</SelectItem>
+                            <SelectItem value="4">المستوى 5</SelectItem>
+                        </SelectContent>
+                    </Select>
+                </div>
+                <Button
                     disabled={loading}
                     onClick={fetchReport}
-                    className="px-6 py-2.5 bg-blue-600 text-white rounded-xl font-black hover:bg-blue-700 transition-all text-xs flex items-center gap-2 shadow-lg shadow-blue-100 disabled:opacity-50"
+                    className="px-6 bg-blue-600 text-white rounded-xl font-black hover:bg-blue-700 transition-all text-xs h-11 flex items-center gap-2 shadow-lg shadow-blue-100"
                 >
                     {loading ? <RefreshCcw size={16} className="animate-spin" /> : 'تحديث البيانات'}
-                </button>
+                </Button>
             </div>
 
             {/* Stats Cards */}
@@ -138,56 +272,106 @@ const IncomeStatementPage = () => {
             {/* Detailed Table */}
             <div className="bg-white rounded-[2.5rem] shadow-sm border border-slate-100 overflow-hidden">
                 {/* Revenues */}
-                <div className="p-5 bg-slate-50/50 border-b border-slate-100 flex items-center justify-between">
-                    <h2 className="text-sm font-black text-slate-800 flex items-center gap-2">
-                        <TrendingUp className="text-emerald-500" size={18} />
-                        الإيرادات التشغيلية
-                    </h2>
-                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-tighter">Operating Revenues</span>
+                <div className="px-5 py-4 bg-slate-50/70 border-b border-slate-100 flex items-center justify-between">
+                    <h2 className="text-[11px] font-black text-slate-500 uppercase tracking-widest w-[40%] text-right bg-blue-50/30 py-2 px-4 rounded-lg">البيان</h2>
+                    <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest w-[30%] text-center bg-rose-50/30 py-2 px-4 rounded-lg mx-2">المبلغ (أجنبي)</span>
+                    <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest w-[30%] text-left bg-emerald-50/30 py-2 px-4 rounded-lg">المبلغ ({currencyCode})</span>
                 </div>
                 <div className="p-6 space-y-3">
-                    {report.revenues.map((rev: any, i: number) => (
-                        <div key={i} className="flex justify-between items-center py-2.5 px-3 hover:bg-slate-50 rounded-xl transition-all border-b border-slate-50 last:border-0">
-                            <span className="text-slate-700 font-bold text-sm">{rev.name}</span>
-                            <span className="font-mono font-black text-slate-900 text-sm">
+                    {treeRevenues.map((rev: any, i: number) => (
+                        <div key={i} className={cn(
+                            "flex justify-between items-center py-3 px-3 hover:bg-slate-50 rounded-xl transition-all border-b border-slate-50 last:border-0",
+                            rev.level === 0 ? "bg-slate-50/20" : ""
+                        )}>
+                            <div
+                                className="flex items-center gap-2 w-[40%]"
+                                style={{ paddingRight: `${rev.level * 20}px` }}
+                            >
+                                <div className={cn(
+                                    "w-0.5 h-3 rounded-full",
+                                    rev.level === 0 ? "bg-emerald-500" : "bg-slate-200"
+                                )} />
+                                <span className={cn("text-slate-700 font-black tracking-tight", rev.level === 0 ? "text-sm" : "text-xs")}>
+                                    {rev.name}
+                                </span>
+                            </div>
+                            <div className="w-[30%] text-center">
+                                {!rev.isBase ? (
+                                    <div className="flex flex-col items-center">
+                                        <span className="text-emerald-700 font-mono text-[11px] font-black">
+                                            {Number(rev.foreignAmount).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                        </span>
+                                        <span className="text-[8px] font-black text-emerald-700 uppercase">{rev.currency}</span>
+                                    </div>
+                                ) : (
+                                    <span className="text-slate-300 font-mono text-[10px]">-</span>
+                                )}
+                            </div>
+                            <span className={cn("font-mono font-black w-[30%] text-left", rev.level === 0 ? "text-sm text-slate-900" : "text-xs text-slate-600")}>
                                 {rev.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}
                             </span>
                         </div>
                     ))}
-                    {report.revenues.length === 0 && (
+                    {treeRevenues.length === 0 && (
                         <p className="text-center py-8 text-slate-400 font-bold text-xs italic">لا توجد إيرادات مسجلة في هذه الفترة</p>
                     )}
                     <div className="flex justify-between items-center pt-4 mt-2 border-t-2 border-dashed border-slate-100 px-3">
-                        <span className="font-black text-slate-800 text-sm">إجمالي الإيرادات</span>
-                        <span className="font-black font-mono text-lg text-emerald-600 underline decoration-emerald-200 decoration-4 underline-offset-8">
+                        <span className="font-black text-slate-800 text-sm w-[40%]">إجمالي الإيرادات</span>
+                        <div className="w-[30%]" />
+                        <span className="font-black font-mono text-lg text-emerald-600 underline decoration-emerald-200 decoration-4 underline-offset-8 w-[30%] text-left">
                             {report.totalRevenue.toLocaleString(undefined, { minimumFractionDigits: 2 })}
                         </span>
                     </div>
                 </div>
 
                 {/* Expenses */}
-                <div className="p-5 bg-slate-50/50 border-t border-b border-slate-100 flex items-center justify-between mt-4">
-                    <h2 className="text-sm font-black text-slate-800 flex items-center gap-2">
-                        <TrendingDown className="text-rose-500" size={18} />
-                        المصاريف والأعباء
-                    </h2>
-                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-tighter">Operating Expenses</span>
+                <div className="px-5 py-4 bg-slate-50/70 border-t border-b border-slate-100 flex items-center justify-between mt-4">
+                    <h2 className="text-[11px] font-black text-slate-500 uppercase tracking-widest w-[40%] text-right bg-blue-50/30 py-2 px-4 rounded-lg">البيان</h2>
+                    <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest w-[30%] text-center bg-rose-50/30 py-2 px-4 rounded-lg mx-2">المبلغ (أجنبي)</span>
+                    <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest w-[30%] text-left bg-emerald-50/30 py-2 px-4 rounded-lg">المبلغ ({currencyCode})</span>
                 </div>
                 <div className="p-6 space-y-3">
-                    {report.expenses.map((exp: any, i: number) => (
-                        <div key={i} className="flex justify-between items-center py-2.5 px-3 hover:bg-slate-50 rounded-xl transition-all border-b border-slate-50 last:border-0">
-                            <span className="text-slate-700 font-bold text-sm">{exp.name}</span>
-                            <span className="font-mono font-black text-rose-600 text-sm">
+                    {treeExpenses.map((exp: any, i: number) => (
+                        <div key={i} className={cn(
+                            "flex justify-between items-center py-3 px-3 hover:bg-slate-50 rounded-xl transition-all border-b border-slate-50 last:border-0",
+                            exp.level === 0 ? "bg-slate-50/20" : ""
+                        )}>
+                            <div
+                                className="flex items-center gap-2 w-[40%]"
+                                style={{ paddingRight: `${exp.level * 20}px` }}
+                            >
+                                <div className={cn(
+                                    "w-0.5 h-3 rounded-full",
+                                    exp.level === 0 ? "bg-rose-500" : "bg-slate-200"
+                                )} />
+                                <span className={cn("text-slate-700 font-black tracking-tight", exp.level === 0 ? "text-sm" : "text-xs")}>
+                                    {exp.name}
+                                </span>
+                            </div>
+                            <div className="w-[30%] text-center">
+                                {!exp.isBase ? (
+                                    <div className="flex flex-col items-center">
+                                        <span className="text-emerald-600 font-mono text-[11px] font-black">
+                                            {Number(exp.foreignAmount).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                        </span>
+                                        <span className="text-[8px] font-black text-emerald-600 uppercase">{exp.currency}</span>
+                                    </div>
+                                ) : (
+                                    <span className="text-slate-300 font-mono text-[10px]">-</span>
+                                )}
+                            </div>
+                            <span className={cn("font-mono font-black w-[30%] text-left", exp.level === 0 ? "text-sm text-rose-700" : "text-xs text-rose-600")}>
                                 ({exp.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })})
                             </span>
                         </div>
                     ))}
-                    {report.expenses.length === 0 && (
+                    {treeExpenses.length === 0 && (
                         <p className="text-center py-8 text-slate-400 font-bold text-xs italic">لا توجد مصاريف مسجلة في هذه الفترة</p>
                     )}
                     <div className="flex justify-between items-center pt-4 mt-2 border-t-2 border-dashed border-slate-100 px-3">
-                        <span className="font-black text-slate-800 text-sm">إجمالي المصاريف</span>
-                        <span className="font-black font-mono text-lg text-rose-600 underline decoration-rose-200 decoration-4 underline-offset-8">
+                        <span className="font-black text-slate-800 text-sm w-[40%]">إجمالي المصاريف</span>
+                        <div className="w-[30%]" />
+                        <span className="font-black font-mono text-lg text-rose-600 underline decoration-rose-200 decoration-4 underline-offset-8 w-[30%] text-left">
                             ({report.totalExpense.toLocaleString(undefined, { minimumFractionDigits: 2 })})
                         </span>
                     </div>

@@ -7,6 +7,8 @@ import axios from 'axios';
 import { IconBox } from '@/components/ui/IconBox';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { TotalSummary } from '@/components/ui/TotalSummary';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 
 const API_BASE = 'http://localhost:4000/api/meta';
 const AUTH_HEADER = { headers: { Authorization: 'Bearer mock-token' } };
@@ -69,19 +71,68 @@ const BranchExpensePage = () => {
     return (
         <div className="max-w-5xl mx-auto space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-700">
             {/* Header */}
-            <div className="bg-white/80 backdrop-blur-xl p-6 rounded-[2.5rem] border border-white shadow-2xl shadow-blue-500/5 flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
-                <PageHeader
-                    icon={ArrowDownRight}
-                    title="مصاريف الجهات"
-                    description={`تحليل مقارن للإنفاق والمصاريف لكل فرع (${baseCurrency?.code || '---'})`}
-                    iconClassName="bg-gradient-to-br from-rose-500 to-red-600 shadow-rose-200"
-                    iconSize={24}
-                />
-                <button className="flex items-center gap-2 px-6 py-3 bg-slate-900 text-white rounded-xl hover:bg-black transition-all font-black text-xs shadow-lg shadow-slate-200">
-                    <Download size={16} />
-                    حفظ التقرير
-                </button>
-            </div>
+            <PageHeader
+                icon={ArrowDownRight}
+                title="مصاريف الجهات"
+                description={`تحليل مقارن للإنفاق والمصاريف لكل فرع (${baseCurrency?.code || '---'})`}
+                iconClassName="bg-gradient-to-br from-rose-500 to-red-600 shadow-rose-200"
+                iconSize={24}
+            >
+                <div className="flex gap-2">
+                    <Button
+                        variant="outline"
+                        onClick={() => {
+                            import('@/lib/exportUtils').then(({ exportToExcel }) => {
+                                const exportData = branches.map(b => ({
+                                    BranchCode: b.code || '---',
+                                    BranchName: b.name,
+                                    TotalExpense: b.expense
+                                }));
+                                exportData.push({ BranchCode: '', BranchName: 'الإجمالي العام', TotalExpense: totalExpense });
+                                exportToExcel(
+                                    exportData,
+                                    'Branch_Expense_Report',
+                                    ['كود الفرع', 'اسم الفرع', 'إجمالي المصروفات'],
+                                    ['BranchCode', 'BranchName', 'TotalExpense']
+                                );
+                            });
+                        }}
+                        className="flex items-center gap-2 px-4 rounded-xl shadow-sm h-11 border-slate-200 text-slate-700 hover:bg-slate-50 font-black text-xs transition-all"
+                    >
+                        <Download size={16} className="text-emerald-500" />
+                        Excel
+                    </Button>
+                    <Button
+                        onClick={() => {
+                            import('@/lib/exportUtils').then(({ exportToPDF }) => {
+                                const subtitle = dateRange.start && dateRange.end
+                                    ? `الفترة من ${dateRange.start} إلى ${dateRange.end}`
+                                    : 'كافة الفروع';
+
+                                exportToPDF(
+                                    branches.map(b => ({
+                                        BranchCode: b.code || '---',
+                                        BranchName: b.name,
+                                        TotalExpense: Number(b.expense).toLocaleString(undefined, { minimumFractionDigits: 2 })
+                                    })),
+                                    'Branch_Expense_Report',
+                                    'مصاريف الجهات',
+                                    ['كود الفرع', 'اسم الفرع', 'إجمالي المصروفات'],
+                                    ['BranchCode', 'BranchName', 'TotalExpense'],
+                                    subtitle,
+                                    {
+                                        TotalExpense: totalExpense.toLocaleString(undefined, { minimumFractionDigits: 2 })
+                                    }
+                                );
+                            });
+                        }}
+                        className="flex items-center gap-2 px-4 bg-slate-900 text-white rounded-xl hover:bg-black transition-all font-black text-xs shadow-lg h-11 shadow-slate-200"
+                    >
+                        <Download size={16} className="text-rose-400" />
+                        PDF
+                    </Button>
+                </div>
+            </PageHeader>
 
             {/* Filters */}
             <div className="bg-white p-4 rounded-3xl border border-slate-100 shadow-sm flex flex-wrap gap-4 items-center">
@@ -89,28 +140,28 @@ const BranchExpensePage = () => {
                     <Calendar size={18} className="text-rose-500" />
                     <span>فترة التحليل:</span>
                 </div>
-                <div className="flex items-center gap-2 bg-slate-50 p-1 rounded-xl border border-slate-100">
-                    <input
+                <div className="flex items-center gap-2 bg-slate-50 p-1 rounded-xl border border-slate-100 h-11">
+                    <Input
                         type="date"
-                        className="bg-transparent px-3 py-1.5 outline-none font-mono text-xs font-bold text-slate-700"
+                        className="bg-transparent px-3 py-1.5 outline-none font-mono text-xs font-bold text-slate-700 border-none shadow-none focus-visible:ring-0 max-w-[140px]"
                         value={dateRange.start}
                         onChange={(e) => setDateRange({ ...dateRange, start: e.target.value })}
                     />
                     <span className="text-slate-300">-</span>
-                    <input
+                    <Input
                         type="date"
-                        className="bg-transparent px-3 py-1.5 outline-none font-mono text-xs font-bold text-slate-700"
+                        className="bg-transparent px-3 py-1.5 outline-none font-mono text-xs font-bold text-slate-700 border-none shadow-none focus-visible:ring-0 max-w-[140px]"
                         value={dateRange.end}
                         onChange={(e) => setDateRange({ ...dateRange, end: e.target.value })}
                     />
                 </div>
-                <button
+                <Button
                     onClick={fetchData}
-                    className="px-6 py-2.5 bg-rose-600 text-white rounded-xl font-black hover:bg-rose-700 transition-all text-xs flex items-center gap-2 shadow-lg shadow-rose-100"
+                    className="px-6 bg-rose-600 text-white rounded-xl font-black hover:bg-rose-700 transition-all text-xs h-11 flex items-center gap-2 shadow-lg shadow-rose-100"
                 >
                     <RefreshCcw size={16} />
                     تحديث المقارنة
-                </button>
+                </Button>
             </div>
 
             {/* Branches Grid */}

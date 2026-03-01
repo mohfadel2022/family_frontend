@@ -5,7 +5,7 @@ import Sidebar from "@/components/layout/Sidebar";
 import { Toaster } from "sonner";
 import { SidebarProvider } from "@/context/SidebarContext";
 import Header from "@/components/layout/Header";
-
+import { TooltipProvider } from "@/components/ui/tooltip";
 
 const cairo = Cairo({
   subsets: ["arabic", "latin"],
@@ -26,18 +26,20 @@ export default function RootLayout({
   return (
     <html lang="ar" dir="rtl">
       <body
-        className={`${cairo.variable} font-sans antialiased flex bg-slate-50/50 text-slate-900`}
+        className={`${cairo.variable} font-sans antialiased h-screen overflow-hidden flex bg-slate-50 text-slate-900`}
       >
-        <Toaster position="top-center" dir="rtl" richColors />
-        <SidebarProvider>
-          <Sidebar aria-label="Sidebar Navigation" />
-          <main className="flex-1 min-h-screen overflow-x-hidden flex flex-col">
-            <Header />
-            <div className="p-6 flex-1">
-              {children}
-            </div>
-          </main>
-        </SidebarProvider>
+        <TooltipProvider delayDuration={0}>
+          <Toaster position="top-center" dir="rtl" richColors />
+          <SidebarProvider>
+            <Sidebar aria-label="Sidebar Navigation" />
+            <main className="flex-1 flex flex-col h-screen overflow-hidden">
+              <Header />
+              <div className="p-4 md:p-6 lg:p-8 flex-1 overflow-y-auto">
+                {children}
+              </div>
+            </main>
+          </SidebarProvider>
+        </TooltipProvider>
       </body>
     </html>
   );
