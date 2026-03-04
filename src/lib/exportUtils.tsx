@@ -110,7 +110,21 @@ const pdfStyles = StyleSheet.create({
     }
 });
 
-const MyPdfDocument = ({ title, subtitle, headers, data }: { title: string, subtitle?: string, headers: string[], data: any[][] }) => {
+const MyPdfDocument = ({
+    title,
+    subtitle,
+    headers,
+    data,
+    orientation = 'landscape',
+    columnStyles = {}
+}: {
+    title: string,
+    subtitle?: string,
+    headers: string[],
+    data: any[][],
+    orientation?: 'portrait' | 'landscape',
+    columnStyles?: Record<number, string>
+}) => {
     const today = new Date().toLocaleString('ar-EG', {
         year: 'numeric', month: 'long', day: 'numeric',
         hour: '2-digit', minute: '2-digit'
@@ -118,7 +132,7 @@ const MyPdfDocument = ({ title, subtitle, headers, data }: { title: string, subt
 
     return (
         <Document>
-            <Page size="A4" orientation="landscape" style={pdfStyles.page}>
+            <Page size="A4" orientation={orientation} style={pdfStyles.page}>
                 {/* Professional Header */}
                 <View style={pdfStyles.header}>
                     <View style={pdfStyles.companyInfo}>
@@ -133,25 +147,39 @@ const MyPdfDocument = ({ title, subtitle, headers, data }: { title: string, subt
 
                 {/* Table Container */}
                 <View style={pdfStyles.table}>
-                    {/* Header Row - FIXED to repeat on every page */}
+                    {/* Header Row */}
                     <View style={pdfStyles.tableHeader} fixed>
                         {headers.map((header, i) => (
-                            <View key={i} style={[pdfStyles.tableCol, { flex: i === 1 ? 3 : 1 }]}>
+                            <View key={i} style={[
+                                pdfStyles.tableCol,
+                                { flex: i === 0 ? 3 : i === headers.length - 1 ? 2 : 1 },
+                                columnStyles[i] ? { backgroundColor: columnStyles[i] } : {}
+                            ]}>
                                 <Text style={pdfStyles.tableHeaderText}>{header}</Text>
                             </View>
                         ))}
                     </View>
-                    {/* Rows - Prevent rows from wrapping across pages */}
+                    {/* Rows */}
                     {data.map((row, i) => (
                         <View key={i} style={[
                             pdfStyles.tableRow,
                             i % 2 === 0 ? {} : { backgroundColor: '#f9fafb' }
                         ]} wrap={false}>
-                            {row.map((cell, j) => (
-                                <View key={j} style={[pdfStyles.tableCol, { flex: j === 1 ? 3 : 1 }]}>
-                                    <Text style={pdfStyles.tableCellText}>{String(cell ?? '')}</Text>
-                                </View>
-                            ))}
+                            {row.map((cell, j) => {
+                                const isObject = cell !== null && typeof cell === 'object' && cell.text !== undefined;
+                                const cellText = isObject ? cell.text : String(cell ?? '');
+                                const cellBg = isObject ? cell.bgColor : (columnStyles[j] && cell !== '-' && cell !== '---' && cell !== null && cell !== undefined ? columnStyles[j] : null);
+
+                                return (
+                                    <View key={j} style={[
+                                        pdfStyles.tableCol,
+                                        { flex: j === 0 ? 3 : j === headers.length - 1 ? 2 : 1 },
+                                        cellBg ? { backgroundColor: cellBg } : {}
+                                    ]}>
+                                        <Text style={pdfStyles.tableCellText}>{cellText}</Text>
+                                    </View>
+                                );
+                            })}
                         </View>
                     ))}
                 </View>
@@ -183,7 +211,17 @@ export const exportToExcel = (data: any[], filename: string, headers: string[], 
     XLSX.writeFile(workbook, `${filename}.xlsx`);
 };
 
-export const exportToPDF = async (data: any[], filename: string, title: string, headers: string[], keys: string[], subtitle?: string, summary?: any) => {
+export const exportToPDF = async (
+    data: any[],
+    filename: string,
+    title: string,
+    headers: string[],
+    keys: string[],
+    subtitle?: string,
+    summary?: any,
+    orientation: 'portrait' | 'landscape' = 'landscape',
+    columnStyles: Record<number, string> = {}
+) => {
     const translations: Record<string, string> = {
         'ASSET': 'أصول',
         'LIABILITY': 'خصوم',
@@ -215,6 +253,8 @@ export const exportToPDF = async (data: any[], filename: string, title: string, 
             subtitle={subtitle}
             headers={headers}
             data={tableData}
+            orientation={orientation}
+            columnStyles={columnStyles}
         />
     ).toBlob();
 

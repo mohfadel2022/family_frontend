@@ -22,7 +22,8 @@ import {
     Building2,
     FileText,
     RotateCcw,
-    Eye
+    Eye,
+    Paperclip
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import axios from 'axios';
@@ -60,9 +61,15 @@ import { Suspense } from 'react';
 import { SearchableAccountSelect } from '@/components/SearchableAccountSelect';
 import { AccountModal } from '@/components/AccountModal';
 import { ConfirmationDialog } from '@/components/ui/ConfirmationDialog';
+import { AttachmentUpload } from '@/components/AttachmentUpload';
+import { ViewAttachmentsModal } from '@/components/ViewAttachmentsModal';
+import { PermissionGuard } from '@/components/ui/PermissionGuard';
+import { useAuth } from '@/context/AuthContext';
 
 const API_BASE = 'http://localhost:4000/api';
-const AUTH_HEADER = { headers: { Authorization: 'Bearer mock-token' } };
+const getAuthHeader = () => ({
+    headers: { Authorization: `Bearer ${localStorage.getItem('token') || 'mock-token'}` }
+});
 
 interface JournalLine {
     id?: string; // Generated on client or came from server
@@ -78,6 +85,13 @@ interface JournalLine {
 }
 
 const JournalPage = () => {
+    const { checkPermission } = useAuth();
+    const canView = checkPermission('VOUCHERS_VIEW');
+    const canCreate = checkPermission('VOUCHERS_CREATE');
+    const canEdit = checkPermission('VOUCHERS_EDIT');
+    const canDelete = checkPermission('VOUCHERS_DELETE');
+    const canExport = checkPermission('VOUCHERS_EXPORT');
+
     const [view, setView] = useState<'list' | 'form'>('list');
     const [entries, setEntries] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
@@ -89,12 +103,16 @@ const JournalPage = () => {
     const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
     const [branchId, setBranchId] = useState('');
     const [lines, setLines] = useState<JournalLine[]>([]);
+    const [attachments, setAttachments] = useState<any[]>([]);
 
     const [accounts, setAccounts] = useState<any[]>([]);
     const [branches, setBranches] = useState<any[]>([]);
     const [saving, setSaving] = useState(false);
     const [currencies, setCurrencies] = useState<any[]>([]);
     const [isAccountModalOpen, setIsAccountModalOpen] = useState(false);
+
+    // Attachment Viewer State
+    const [viewAttachmentsEntry, setViewAttachmentsEntry] = useState<any>(null);
 
     // Confirmation Dialog State
     const [confirmDialog, setConfirmDialog] = useState<{
@@ -130,7 +148,7 @@ const JournalPage = () => {
 
     const fetchEntryById = async (id: string) => {
         try {
-            const res = await axios.get(`${API_BASE}/journals/${id}`, AUTH_HEADER);
+            const res = await axios.get(`${API_BASE}/journals/${id}`, getAuthHeader());
             handleEdit(res.data, res.data.status === 'POSTED');
         } catch (err) {
             console.error(err);
@@ -141,9 +159,9 @@ const JournalPage = () => {
     const fetchMeta = async () => {
         try {
             const [accRes, branchRes, currRes] = await Promise.all([
-                axios.get(`${API_BASE}/meta/accounts`, AUTH_HEADER),
-                axios.get(`${API_BASE}/meta/branches`, AUTH_HEADER),
-                axios.get(`${API_BASE}/meta/`, AUTH_HEADER)
+                axios.get(`${API_BASE}/meta/accounts`, getAuthHeader()),
+                axios.get(`${API_BASE}/meta/branches`, getAuthHeader()),
+                axios.get(`${API_BASE}/meta/currencies`, getAuthHeader())
             ]);
             setAccounts(accRes.data);
             setBranches(branchRes.data);
@@ -158,7 +176,7 @@ const JournalPage = () => {
     const fetchEntries = async () => {
         setLoading(true);
         try {
-            const res = await axios.get(`${API_BASE}/journals?type=GENERAL`, AUTH_HEADER);
+            const res = await axios.get(`${API_BASE}/journals?type=GENERAL`, getAuthHeader());
             setEntries(res.data);
         } catch (err) {
             console.error(err);
@@ -175,12 +193,13 @@ const JournalPage = () => {
             { tempId: '1', accountId: '', currencyId: '', currencyCode: '---', debit: 0, credit: 0, exchangeRate: 1, baseDebit: 0, baseCredit: 0 },
             { tempId: '2', accountId: '', currencyId: '', currencyCode: '---', debit: 0, credit: 0, exchangeRate: 1, baseDebit: 0, baseCredit: 0 },
         ]);
+        setAttachments([]);
     };
 
     const fetchRate = async (currencyId: string, targetDate: string) => {
         if (!currencyId) return 1;
         try {
-            const res = await axios.get(`${API_BASE}/meta/currencies/${currencyId}/rate-at?date=${targetDate}`, AUTH_HEADER);
+            const res = await axios.get(`${API_BASE}/meta/currencies/${currencyId}/rate-at?date=${targetDate}`, getAuthHeader());
             return Number(res.data.rate);
         } catch (err) {
             console.error('Error fetching rate:', err);
@@ -234,6 +253,7 @@ const JournalPage = () => {
             baseDebit: Number(l.baseDebit),
             baseCredit: Number(l.baseCredit)
         })));
+        setAttachments(entry.attachments || []);
         setView('form');
     };
 
@@ -310,18 +330,24 @@ const JournalPage = () => {
                     exchangeRate: Number(l.exchangeRate),
                     baseDebit: Number(l.baseDebit),
                     baseCredit: Number(l.baseCredit)
+                })),
+                attachments: attachments.map(att => ({
+                    fileName: att.fileName,
+                    fileUrl: att.fileUrl,
+                    fileType: att.fileType,
+                    fileSize: att.fileSize
                 }))
             };
 
             let res;
             if (editingId) {
-                res = await axios.put(`${API_BASE}/journals/${editingId}`, payload, AUTH_HEADER);
+                res = await axios.put(`${API_BASE}/journals/${editingId}`, payload, getAuthHeader());
             } else {
-                res = await axios.post(`${API_BASE}/journals`, payload, AUTH_HEADER);
+                res = await axios.post(`${API_BASE}/journals`, payload, getAuthHeader());
             }
 
             if (isPost) {
-                await axios.post(`${API_BASE}/journals/${res.data.id || editingId}/post`, {}, AUTH_HEADER);
+                await axios.post(`${API_BASE}/journals/${res.data.id || editingId}/post`, {}, getAuthHeader());
                 toast.success('تم ترحيل القيد بنجاح');
             } else {
                 toast.success('تم حفظ القيد بنجاح');
@@ -347,7 +373,7 @@ const JournalPage = () => {
             onConfirm: async () => {
                 setIsActionLoading(true);
                 try {
-                    await axios.post(`${API_BASE}/journals/${id}/unpost`, {}, AUTH_HEADER);
+                    await axios.post(`${API_BASE}/journals/${id}/unpost`, {}, getAuthHeader());
                     toast.success('تم إلغاء ترحيل القيد بنجاح', {
                         description: 'القيد متوفر الآن في قائمة المسودات للتعديل.'
                     });
@@ -372,7 +398,7 @@ const JournalPage = () => {
             onConfirm: async () => {
                 setIsActionLoading(true);
                 try {
-                    await axios.delete(`${API_BASE}/journals/${id}`, AUTH_HEADER);
+                    await axios.delete(`${API_BASE}/journals/${id}`, getAuthHeader());
                     toast.success('تم حذف القيد بنجاح', {
                         description: 'تمت إزالة كافة أسطر القيد من سجلات النظام.'
                     });
@@ -439,6 +465,24 @@ const JournalPage = () => {
                         {new Date(row.original.date).toLocaleDateString('ar-DZ')}
                     </span>
                 ),
+            },
+            {
+                id: 'attachments',
+                header: '',
+                cell: ({ row }) => {
+                    const count = row.original.attachments?.length || 0;
+                    if (count === 0) return null;
+                    return (
+                        <button
+                            onClick={(e) => { e.stopPropagation(); setViewAttachmentsEntry(row.original); }}
+                            className="flex items-center gap-1 text-slate-400 hover:text-blue-600 hover:bg-blue-50 p-1.5 rounded-lg transition-all"
+                            title={`${count} مرفق(ات) - انقر للعرض`}
+                        >
+                            <Paperclip size={14} />
+                            <span className="text-[10px] font-bold">{count}</span>
+                        </button>
+                    );
+                }
             },
             {
                 id: 'amounts',
@@ -518,6 +562,7 @@ const JournalPage = () => {
                     const entry = row.original;
                     return (
                         <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-all">
+                            {/* View/Edit button - visible to all with VIEW, edit requires EDIT */}
                             {entry.status === 'POSTED' ? (
                                 <Button
                                     size="icon"
@@ -528,7 +573,7 @@ const JournalPage = () => {
                                 >
                                     <Eye size={18} />
                                 </Button>
-                            ) : (
+                            ) : canEdit ? (
                                 <Button
                                     size="icon"
                                     variant="ghost"
@@ -538,38 +583,52 @@ const JournalPage = () => {
                                 >
                                     <Edit3 size={18} />
                                 </Button>
-                            )}
-
-                            <Button
-                                size="icon"
-                                variant="ghost"
-                                onClick={() => handleExportSingle(entry)}
-                                className="w-10 h-10 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 rounded-xl transition-all"
-                                title="تصدير PDF"
-                            >
-                                <Download size={18} />
-                            </Button>
-
-                            {entry.status === 'POSTED' ? (
-                                <Button
-                                    size="icon"
-                                    variant="ghost"
-                                    onClick={() => handleUnpost(entry.id)}
-                                    className="w-10 h-10 text-amber-600 hover:text-amber-700 hover:bg-amber-100 rounded-xl transition-all"
-                                    title="إلغاء الترحيل (مدير فقط)"
-                                >
-                                    <RotateCcw size={18} />
-                                </Button>
                             ) : (
                                 <Button
                                     size="icon"
                                     variant="ghost"
-                                    onClick={() => handleDelete(entry.id)}
-                                    className="w-10 h-10 text-rose-500 hover:text-rose-600 hover:bg-rose-100 rounded-xl transition-all"
-                                    title="حذف"
+                                    onClick={() => handleEdit(entry, true)}
+                                    className="w-10 h-10 text-slate-400 hover:text-slate-500 hover:bg-slate-100 rounded-xl transition-all"
+                                    title="عرض فقط (لا تملك صلاحية التعديل)"
                                 >
-                                    <Trash2 size={18} />
+                                    <Eye size={18} />
                                 </Button>
+                            )}
+
+                            {canExport && (
+                                <Button
+                                    size="icon"
+                                    variant="ghost"
+                                    onClick={() => handleExportSingle(entry)}
+                                    className="w-10 h-10 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 rounded-xl transition-all"
+                                    title="تصدير PDF"
+                                >
+                                    <Download size={18} />
+                                </Button>
+                            )}
+
+                            {canDelete && (
+                                entry.status === 'POSTED' ? (
+                                    <Button
+                                        size="icon"
+                                        variant="ghost"
+                                        onClick={() => handleUnpost(entry.id)}
+                                        className="w-10 h-10 text-amber-600 hover:text-amber-700 hover:bg-amber-100 rounded-xl transition-all"
+                                        title="إلغاء الترحيل (مدير فقط)"
+                                    >
+                                        <RotateCcw size={18} />
+                                    </Button>
+                                ) : (
+                                    <Button
+                                        size="icon"
+                                        variant="ghost"
+                                        onClick={() => handleDelete(entry.id)}
+                                        className="w-10 h-10 text-rose-500 hover:text-rose-600 hover:bg-rose-100 rounded-xl transition-all"
+                                        title="حذف"
+                                    >
+                                        <Trash2 size={18} />
+                                    </Button>
+                                )
                             )}
                         </div>
                     );
@@ -599,14 +658,16 @@ const JournalPage = () => {
                 className="mb-8"
             >
                 {view === 'list' ? (
-                    <Button
-                        onClick={handleAddNew}
-                        className="bg-blue-600 hover:bg-blue-700  shadow-lg shadow-blue-200 hover:shadow-blue-300 transition-all hover:-translate-y-0.5"
-                        size="lg"
-                    >
-                        <Plus size={20} className="mr-2" />
-                        إضافة قيد جديد
-                    </Button>
+                    canCreate && (
+                        <Button
+                            onClick={handleAddNew}
+                            className="bg-blue-600 hover:bg-blue-700  shadow-lg shadow-blue-200 hover:shadow-blue-300 transition-all hover:-translate-y-0.5"
+                            size="lg"
+                        >
+                            <Plus size={20} className="mr-2" />
+                            إضافة قيد جديد
+                        </Button>
+                    )
                 ) : (
                     <div className="flex gap-2">
                         {editingId && (
@@ -838,6 +899,15 @@ const JournalPage = () => {
                             </div>
                         </div>
 
+                        <div className="bg-white p-7 rounded-[2rem] border border-slate-200 shadow-lg">
+                            <AttachmentUpload
+                                attachments={attachments}
+                                onChange={setAttachments}
+                                disabled={isViewOnly}
+                                label="المرفقات والوثائق"
+                            />
+                        </div>
+
                         {!isViewOnly && (
                             <div className="bg-gradient-to-br from-slate-900 to-slate-950 p-7 rounded-[2rem] text-white shadow-2xl border border-slate-800">
                                 <div className="flex items-center gap-2 mb-6 text-blue-400">
@@ -888,6 +958,13 @@ const JournalPage = () => {
                 description={confirmDialog.description}
                 variant={confirmDialog.variant}
                 confirmText={confirmDialog.confirmText}
+            />
+
+            <ViewAttachmentsModal
+                open={!!viewAttachmentsEntry}
+                onOpenChange={(open) => !open && setViewAttachmentsEntry(null)}
+                attachments={viewAttachmentsEntry?.attachments || []}
+                title={`مرفقات قيد رقم: ${viewAttachmentsEntry?.entryNumber}`}
             />
         </div>
     );

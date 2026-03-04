@@ -24,7 +24,7 @@ const BranchExpensePage = () => {
         try {
             const [branchRes, currRes] = await Promise.all([
                 axios.get(`${API_BASE}/branches`, AUTH_HEADER),
-                axios.get(`${API_BASE}/`, AUTH_HEADER)
+                axios.get(`${API_BASE}/currencies`, AUTH_HEADER)
             ]);
 
             setBaseCurrency(currRes.data.find((c: any) => c.isBase) || { code: '---' });

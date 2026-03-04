@@ -34,7 +34,7 @@ const IncomeStatementPage = () => {
                     params: { startDate: dateRange.start, endDate: dateRange.end },
                     ...AUTH_HEADER
                 }),
-                axios.get(`${API_BASE}/`, AUTH_HEADER)
+                axios.get(`${API_BASE}/currencies`, AUTH_HEADER)
             ]);
 
             setReport(reportRes.data);

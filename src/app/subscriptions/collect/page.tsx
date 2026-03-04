@@ -77,7 +77,7 @@ function CollectPageContent() {
                 const [entRes, accRes, curRes] = await Promise.all([
                     axios.get(`${API_BASE}/entities`, AUTH_HEADER),
                     axios.get(`${META_BASE}/accounts`, AUTH_HEADER),
-                    axios.get(`${META_BASE}/`, AUTH_HEADER)
+                    axios.get(`${META_BASE}/currencies`, AUTH_HEADER)
                 ]);
                 setEntities(entRes.data);
                 setAccounts(accRes.data);
@@ -151,7 +151,7 @@ function CollectPageContent() {
         try {
             const firstBranchId = selections[0].member.entity.branchId;
 
-            await axios.post(`${API_BASE}/collect`, {
+            const res = await axios.post(`${API_BASE}/collect`, {
                 id: collectionId || undefined,
                 items: selections.map(s => ({
                     memberId: s.memberId,
@@ -167,7 +167,12 @@ function CollectPageContent() {
             }, AUTH_HEADER);
 
             toast.success(status === 'POSTED' ? "تم ترحيل وحفظ السند بنجاح" : "تم حفظ السند كمسودة بنجاح");
-            router.push('/subscriptions/collect/history');
+
+            if (status === 'POSTED' && res.data.journalEntryId) {
+                router.push(`/vouchers/receipts?id=${res.data.journalEntryId}`);
+            } else {
+                router.push('/subscriptions/collect/history');
+            }
         } catch (err: any) {
             toast.error(err.response?.data?.error || "فشل عملية التحصيل");
         } finally {
@@ -190,6 +195,70 @@ function CollectPageContent() {
     };
 
     const availableColumns: ColumnDef<any>[] = [
+        {
+            id: 'select',
+            header: () => (
+                <div className="flex justify-center">
+                    <input
+                        type="checkbox"
+                        className="w-4 h-4 rounded border-slate-300 text-white focus:ring-indigo-500 cursor-pointer accent-indigo-600"
+                        checked={dueMembers.length > 0 && dueMembers.every(m => {
+                            const sYear = m.stoppedAt ? new Date(m.stoppedAt).getFullYear() : null;
+                            const isTerminated = sYear ? sYear <= year : (m.status !== 'ACTIVE');
+                            return isTerminated || selections.some(s => s.memberId === m.id && s.year === year);
+                        })}
+                        onChange={(e) => {
+                            if (e.target.checked) {
+                                const newSels = dueMembers
+                                    .filter(m => {
+                                        const sYear = m.stoppedAt ? new Date(m.stoppedAt).getFullYear() : null;
+                                        const isTerminated = sYear ? sYear <= year : (m.status !== 'ACTIVE');
+                                        return !isTerminated && !selections.some(s => s.memberId === m.id && s.year === year);
+                                    })
+                                    .map(m => ({
+                                        memberId: m.id,
+                                        member: m,
+                                        year: year,
+                                        amount: m.entity.annualSubscription
+                                    }));
+                                setSelections([...selections, ...newSels]);
+                            } else {
+                                setSelections(selections.filter(s => s.year !== year || !dueMembers.some(m => m.id === s.memberId)));
+                            }
+                        }}
+                    />
+                </div>
+            ),
+            cell: ({ row }) => {
+                const member = row.original;
+                const isSelected = selections.some(s => s.memberId === member.id && s.year === year);
+                const sYear = member.stoppedAt ? new Date(member.stoppedAt).getFullYear() : null;
+                const isTerminated = sYear ? sYear <= year : (member.status !== 'ACTIVE');
+
+                return (
+                    <div className="flex justify-center">
+                        <input
+                            type="checkbox"
+                            className="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                            disabled={isTerminated}
+                            checked={isSelected}
+                            onChange={() => {
+                                if (isSelected) {
+                                    setSelections(selections.filter(s => !(s.memberId === member.id && s.year === year)));
+                                } else {
+                                    setSelections([...selections, {
+                                        memberId: member.id,
+                                        member: member,
+                                        year: year,
+                                        amount: member.entity.annualSubscription
+                                    }]);
+                                }
+                            }}
+                        />
+                    </div>
+                );
+            },
+        },
         {
             accessorKey: 'name',
             header: 'اسم العضو',
@@ -225,42 +294,26 @@ function CollectPageContent() {
                     </div>
                 );
             }
-        },
-        {
-            id: 'actions',
-            cell: ({ row }) => {
-                const member = row.original;
-                const isSelected = selections.some(s => s.memberId === member.id && s.year === year);
-                const sYear = member.stoppedAt ? new Date(member.stoppedAt).getFullYear() : null;
-                const isTerminated = sYear ? sYear <= year : (member.status !== 'ACTIVE');
-
-                return (
-                    <Button
-                        size="sm"
-                        variant="ghost"
-                        disabled={isSelected || isTerminated}
-                        onClick={() => {
-                            if (!isSelected && !isTerminated) {
-                                setSelections([...selections, {
-                                    memberId: member.id,
-                                    member: member,
-                                    year: year,
-                                    amount: member.entity.annualSubscription
-                                }]);
-                            }
-                        }}
-                        className={cn(
-                            "h-8 px-2 rounded-lg font-black flex gap-1",
-                            (isSelected || isTerminated) ? "text-slate-300 pointer-events-none" : "text-indigo-600 hover:bg-indigo-50"
-                        )}
-                    >
-                        {isTerminated ? <UserMinus size={14} /> : isSelected ? <Check size={14} /> : <Plus size={14} />}
-                        {isTerminated ? 'متوقف' : isSelected ? 'مضاف' : 'إضافة'}
-                    </Button>
-                );
-            }
         }
     ];
+
+    const groupedSelections = selections.reduce((acc: any[], s: any) => {
+        const existing = acc.find(g => g.memberId === s.memberId);
+        if (existing) {
+            if (!existing.years.includes(s.year)) {
+                existing.years.push(s.year);
+                existing.total += Number(s.amount);
+            }
+        } else {
+            acc.push({
+                memberId: s.memberId,
+                member: s.member,
+                years: [s.year],
+                total: Number(s.amount)
+            });
+        }
+        return acc;
+    }, []);
 
     if (loadingEntities) return (
         <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4">
@@ -355,7 +408,16 @@ function CollectPageContent() {
                             </div>
                             <div className="space-y-2">
                                 <label className="text-sm font-black text-slate-600">الجهة (Entity)</label>
-                                <Select value={selectedEntityId} onValueChange={setSelectedEntityId}>
+                                <Select
+                                    value={selectedEntityId}
+                                    onValueChange={(val) => {
+                                        if (selections.length > 0 && val !== selectedEntityId) {
+                                            toast.error("يرجى إفراغ القائمة قبل تغيير الجهة (يجب أن يكون التحصيل لجهة واحدة فقط)");
+                                            return;
+                                        }
+                                        setSelectedEntityId(val);
+                                    }}
+                                >
                                     <SelectTrigger className="h-12 rounded-xl border-slate-100 bg-slate-50 font-bold" dir="rtl">
                                         <SelectValue placeholder="اختر الجهة" />
                                     </SelectTrigger>
@@ -479,28 +541,30 @@ function CollectPageContent() {
                                         />
                                     </div>
 
-                                    {selections.length > 0 && (
+                                    {groupedSelections.length > 0 && (
                                         <div className="space-y-3 mt-8">
-                                            <h3 className="text-sm font-black text-slate-400 uppercase tracking-tighter px-2">الاشتراكات المحددة ({selections.length})</h3>
+                                            <h3 className="text-sm font-black text-slate-400 uppercase tracking-tighter px-2">الاشتراكات المحددة ({groupedSelections.length} أعضاء)</h3>
                                             <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pb-8">
-                                                {selections.map((item, idx) => (
-                                                    <div key={`sel-${idx}`} className="flex items-center justify-between p-4 bg-indigo-50/50 border border-indigo-100 rounded-2xl group transition-all hover:border-indigo-200">
+                                                {groupedSelections.map((group, idx) => (
+                                                    <div key={`group-${idx}`} className="flex items-center justify-between p-4 bg-indigo-50/50 border border-indigo-100 rounded-2xl group transition-all hover:border-indigo-200">
                                                         <div className="flex items-center gap-3">
-                                                            <div className="w-8 h-8 rounded-lg bg-indigo-600 text-white flex items-center justify-center text-xs font-black">
-                                                                {item.year}
+                                                            <div className="flex flex-wrap gap-1 max-w-[80px]">
+                                                                {group.years.map((y: number) => (
+                                                                    <div key={y} className="px-2 py-1 rounded-lg bg-indigo-600 text-white text-[10px] font-black">
+                                                                        {y}
+                                                                    </div>
+                                                                ))}
                                                             </div>
                                                             <div>
-                                                                <p className="font-black text-slate-800 text-sm">{item.member.name}</p>
+                                                                <p className="font-black text-slate-800 text-sm">{group.member.name}</p>
                                                                 <p className="text-[10px] text-slate-400 font-bold uppercase tracking-tight">
-                                                                    {item.member?.entity?.name} | {item.amount} {item.member?.entity?.currency?.symbol || ''}
+                                                                    {group.member?.entity?.name} | {group.total} {group.member?.entity?.currency?.symbol || ''}
                                                                 </p>
                                                             </div>
                                                         </div>
                                                         <button
                                                             onClick={() => {
-                                                                const next = [...selections];
-                                                                next.splice(idx, 1);
-                                                                setSelections(next);
+                                                                setSelections(selections.filter(s => s.memberId !== group.memberId));
                                                             }}
                                                             className="p-2 text-slate-300 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-all"
                                                         >

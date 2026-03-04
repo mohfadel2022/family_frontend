@@ -19,6 +19,7 @@ import { Input } from '@/components/ui/input';
 import axios from 'axios';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
+import { useAuth } from '@/context/AuthContext';
 
 // ─── Feature card shown on the left panel ─────────────────────────────────────
 const Feature = ({ icon: Icon, title, desc }: { icon: any; title: string; desc: string }) => (
@@ -36,6 +37,7 @@ const Feature = ({ icon: Icon, title, desc }: { icon: any; title: string; desc: 
 // ─── Login Page ───────────────────────────────────────────────────────────────
 const LoginPage = () => {
     const router = useRouter();
+    const { login } = useAuth();
     const [showPassword, setShowPassword] = useState(false);
     const [formData, setFormData] = useState({ username: '', password: '' });
     const [loading, setLoading] = useState(false);
@@ -46,21 +48,15 @@ const LoginPage = () => {
         setError('');
         setLoading(true);
 
-        const setAuthToken = (token: string) => {
-            localStorage.setItem('token', token);
-            // Set cookie so Next.js middleware can protect routes
-            document.cookie = `auth-token=${token}; path=/; max-age=${60 * 60 * 24 * 7}; SameSite=Strict`;
-        };
-
         try {
             const res = await axios.post('http://localhost:4000/api/meta/auth/login', formData);
-            setAuthToken(res.data.token);
+            await login(res.data.token);
             const redirectTo = new URLSearchParams(window.location.search).get('redirect') || '/';
             router.replace(redirectTo);
         } catch (err: any) {
             // Fallback for development: accept admin/admin123 → mock-token
             if (formData.username === 'admin' && formData.password === 'admin123') {
-                setAuthToken('mock-token');
+                await login('mock-token');
                 const redirectTo = new URLSearchParams(window.location.search).get('redirect') || '/';
                 router.replace(redirectTo);
             } else {

@@ -44,7 +44,7 @@ const CurrencyHistoryReport = () => {
     useEffect(() => {
         const fetchCurrencies = async () => {
             try {
-                const res = await axios.get(`${API_BASE}/`, AUTH_HEADER);
+                const res = await axios.get(`${API_BASE}/currencies`, AUTH_HEADER);
                 const foreignOnly = res.data.filter((c: any) => !c.isBase);
                 setCurrencies(foreignOnly);
                 if (foreignOnly.length > 0) {

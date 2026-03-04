@@ -31,6 +31,7 @@ import {
     TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { Button } from "@/components/ui/button";
+import { useAuth } from "@/context/AuthContext";
 
 // ─── Menu structure ───────────────────────────────────────────────────────────
 const mainItems = [
@@ -58,6 +59,8 @@ const analyticItems = [
 const settingsItems = [
     { title: "الإعدادات العامة", icon: Settings, href: "/settings" },
     { title: "إدارة المستخدمين", icon: Users, href: "/settings/users" },
+    { title: "الصلاحيات والأدوار", icon: Shield, href: "/settings/roles" },
+    { title: "مفاتيح الصلاحيات", icon: Shield, href: "/settings/permissions" },
     { title: "إغلاق الفترات", icon: HistoryIcon, href: "/settings/periods" },
     { title: "سجل العمليات", icon: Shield, href: "/settings/audit-logs" },
 ];
@@ -228,6 +231,34 @@ const NavGroup = ({
 // ─── Sidebar ──────────────────────────────────────────────────────────────────
 const Sidebar = () => {
     const { isOpen, setIsOpen, isMobile } = useSidebar();
+    const { user, isAdmin, isResponsible, isEncargado, checkPermission } = useAuth();
+
+    // Vouchers: only if user has VOUCHERS_VIEW permission
+    const visibleVoucherItems = checkPermission('VOUCHERS_VIEW') ? vouchersItems : [];
+
+    // Main items visible to all authenticated users
+    const visibleMainItems = mainItems;
+
+    // Subscriptions: visible to all (backend filters by entity scope)
+    const visibleSubscriptionItems = subscriptionItems;
+
+    // Analytics/reports: requires REPORTS_VIEW
+    const visibleAnalyticItems = checkPermission('REPORTS_VIEW') ? analyticItems : [];
+
+    // Settings: filter by specific permissions
+    const visibleSettingsItems = settingsItems.filter(item => {
+        if (isAdmin) return true;
+        // Users management page
+        if (item.href === '/settings/users') return checkPermission('USERS_VIEW');
+        // Roles & permissions management
+        if (item.href === '/settings/roles') return checkPermission('ROLES_VIEW');
+        if (item.href === '/settings/permissions') return checkPermission('ROLES_MANAGE');
+        // Audit logs
+        if (item.href === '/settings/audit-logs') return checkPermission('AUDIT_VIEW');
+        // General settings (periods, currencies) visible to responsible+
+        if (isEncargado) return false;
+        return true;
+    });
 
     const sidebarContent = (
         <>
@@ -258,28 +289,32 @@ const Sidebar = () => {
             {/* Navigation */}
             <nav className="flex-1 px-3 space-y-0.5 overflow-y-auto">
                 {/* Main items */}
-                {mainItems.map(item => (
+                {visibleMainItems.map(item => (
                     <NavItem key={item.href} {...item} isOpen={isOpen} />
                 ))}
 
                 {/* Vouchers dynamic group */}
-                <NavGroup
-                    title="السندات والقيود"
-                    icon={FileText}
-                    items={vouchersItems}
-                    isOpen={isOpen}
-                />
+                {visibleVoucherItems.length > 0 && (
+                    <NavGroup
+                        title="السندات والقيود"
+                        icon={FileText}
+                        items={visibleVoucherItems}
+                        isOpen={isOpen}
+                    />
+                )}
 
                 {/* Subscription items */}
-                <NavGroup
-                    title="الاشتراكات والتحصيل"
-                    icon={UserCheck}
-                    items={subscriptionItems}
-                    isOpen={isOpen}
-                />
+                {visibleSubscriptionItems.length > 0 && (
+                    <NavGroup
+                        title="الاشتراكات والتحصيل"
+                        icon={UserCheck}
+                        items={visibleSubscriptionItems}
+                        isOpen={isOpen}
+                    />
+                )}
 
                 {/* Analytic items */}
-                {analyticItems.map(item => (
+                {visibleAnalyticItems.map(item => (
                     <NavItem key={item.href} {...item} isOpen={isOpen} />
                 ))}
 
@@ -287,12 +322,14 @@ const Sidebar = () => {
                 <div className="my-3 border-t border-slate-800/40" />
 
                 {/* Settings group */}
-                <NavGroup
-                    title="الإعدادات"
-                    icon={Settings}
-                    items={settingsItems}
-                    isOpen={isOpen}
-                />
+                {visibleSettingsItems.length > 0 && (
+                    <NavGroup
+                        title="الإعدادات"
+                        icon={Settings}
+                        items={visibleSettingsItems}
+                        isOpen={isOpen}
+                    />
+                )}
             </nav>
 
             {/* Footer: Logout */}

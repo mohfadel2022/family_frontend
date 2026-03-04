@@ -22,7 +22,8 @@ import {
     TrendingUp,
     Download,
     ArrowDownToLine,
-    AlertTriangle
+    AlertTriangle,
+    Paperclip
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import axios from 'axios';
@@ -53,9 +54,14 @@ import { Suspense } from 'react';
 import { SearchableAccountSelect } from '@/components/SearchableAccountSelect';
 import { AccountModal } from '@/components/AccountModal';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
+import { AttachmentUpload } from '@/components/AttachmentUpload';
+import { ViewAttachmentsModal } from '@/components/ViewAttachmentsModal';
+import { useAuth } from '@/context/AuthContext';
 
 const API_BASE = 'http://localhost:4000/api';
-const AUTH_HEADER = { headers: { Authorization: 'Bearer mock-token' } };
+const getAuthHeader = () => ({
+    headers: { Authorization: `Bearer ${localStorage.getItem('token') || 'mock-token'}` }
+});
 
 interface JournalLine {
     id?: string;
@@ -71,6 +77,12 @@ interface JournalLine {
 }
 
 const PaymentsPage = () => {
+    const { checkPermission } = useAuth();
+    const canCreate = checkPermission('VOUCHERS_CREATE');
+    const canEdit = checkPermission('VOUCHERS_EDIT');
+    const canDelete = checkPermission('VOUCHERS_DELETE');
+    const canExport = checkPermission('VOUCHERS_EXPORT');
+
     const [view, setView] = useState<'list' | 'form'>('list');
     const [entries, setEntries] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
@@ -82,12 +94,16 @@ const PaymentsPage = () => {
     const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
     const [branchId, setBranchId] = useState('');
     const [lines, setLines] = useState<JournalLine[]>([]);
+    const [attachments, setAttachments] = useState<any[]>([]);
 
     const [accounts, setAccounts] = useState<any[]>([]);
     const [branches, setBranches] = useState<any[]>([]);
     const [saving, setSaving] = useState(false);
     const [currencies, setCurrencies] = useState<any[]>([]);
     const [isAccountModalOpen, setIsAccountModalOpen] = useState(false);
+
+    // Attachment Viewer State
+    const [viewAttachmentsEntry, setViewAttachmentsEntry] = useState<any>(null);
 
     // Confirm dialog state
     const [confirmOpen, setConfirmOpen] = useState(false);
@@ -133,7 +149,7 @@ const PaymentsPage = () => {
 
     const fetchEntryById = async (id: string) => {
         try {
-            const res = await axios.get(`${API_BASE}/journals/${id}`, AUTH_HEADER);
+            const res = await axios.get(`${API_BASE}/journals/${id}`, getAuthHeader());
             handleEdit(res.data, res.data.status === 'POSTED');
         } catch (err) {
             console.error(err);
@@ -144,9 +160,9 @@ const PaymentsPage = () => {
     const fetchMeta = async () => {
         try {
             const [accRes, branchRes, currRes] = await Promise.all([
-                axios.get(`${API_BASE}/meta/accounts`, AUTH_HEADER),
-                axios.get(`${API_BASE}/meta/branches`, AUTH_HEADER),
-                axios.get(`${API_BASE}/meta/`, AUTH_HEADER)
+                axios.get(`${API_BASE}/meta/accounts`, getAuthHeader()),
+                axios.get(`${API_BASE}/meta/branches`, getAuthHeader()),
+                axios.get(`${API_BASE}/meta/currencies`, getAuthHeader())
             ]);
             setAccounts(accRes.data);
             setBranches(branchRes.data);
@@ -161,7 +177,7 @@ const PaymentsPage = () => {
     const fetchEntries = async () => {
         setLoading(true);
         try {
-            const res = await axios.get(`${API_BASE}/journals?type=PAYMENT`, AUTH_HEADER);
+            const res = await axios.get(`${API_BASE}/journals?type=PAYMENT`, getAuthHeader());
             setEntries(res.data);
         } catch (err) {
             console.error(err);
@@ -178,12 +194,13 @@ const PaymentsPage = () => {
             { tempId: '1', accountId: '', currencyId: '', currencyCode: '---', debit: 0, credit: 0, exchangeRate: 1, baseDebit: 0, baseCredit: 0 },
             { tempId: '2', accountId: '', currencyId: '', currencyCode: '---', debit: 0, credit: 0, exchangeRate: 1, baseDebit: 0, baseCredit: 0 },
         ]);
+        setAttachments([]);
     };
 
     const fetchRate = async (currencyId: string, targetDate: string) => {
         if (!currencyId) return 1;
         try {
-            const res = await axios.get(`${API_BASE}/meta/currencies/${currencyId}/rate-at?date=${targetDate}`, AUTH_HEADER);
+            const res = await axios.get(`${API_BASE}/meta/currencies/${currencyId}/rate-at?date=${targetDate}`, getAuthHeader());
             return Number(res.data.rate);
         } catch (err) {
             console.error('Error fetching rate:', err);
@@ -265,6 +282,7 @@ const PaymentsPage = () => {
             baseDebit: Number(l.baseDebit),
             baseCredit: Number(l.baseCredit)
         })));
+        setAttachments(entry.attachments || []);
         setView('form');
     };
 
@@ -325,15 +343,21 @@ const PaymentsPage = () => {
                     exchangeRate: Number(l.exchangeRate),
                     baseDebit: Number(l.baseDebit),
                     baseCredit: Number(l.baseCredit)
+                })),
+                attachments: attachments.map(att => ({
+                    fileName: att.fileName,
+                    fileUrl: att.fileUrl,
+                    fileType: att.fileType,
+                    fileSize: att.fileSize
                 }))
             };
             let res;
             if (editingId) {
-                res = await axios.put(`${API_BASE}/journals/${editingId}`, payload, AUTH_HEADER);
+                res = await axios.put(`${API_BASE}/journals/${editingId}`, payload, getAuthHeader());
             } else {
-                res = await axios.post(`${API_BASE}/journals`, payload, AUTH_HEADER);
+                res = await axios.post(`${API_BASE}/journals`, payload, getAuthHeader());
             }
-            if (isPost) await axios.post(`${API_BASE}/journals/${res.data.id || editingId}/post`, {}, AUTH_HEADER);
+            if (isPost) await axios.post(`${API_BASE}/journals/${res.data.id || editingId}/post`, {}, getAuthHeader());
             toast.success(isPost ? 'تم ترحيل السند' : 'تم حفظ السند');
             fetchEntries();
             setView('list');
@@ -352,7 +376,7 @@ const PaymentsPage = () => {
                 label: 'إلغاء الترحيل',
             },
             async () => {
-                await axios.post(`${API_BASE}/journals/${id}/unpost`, {}, AUTH_HEADER);
+                await axios.post(`${API_BASE}/journals/${id}/unpost`, {}, getAuthHeader());
                 toast.success('تم إلغاء ترحيل السند بنجاح');
                 fetchEntries();
             }
@@ -369,7 +393,7 @@ const PaymentsPage = () => {
                 label: 'حذف السند',
             },
             async () => {
-                await axios.delete(`${API_BASE}/journals/${id}`, AUTH_HEADER);
+                await axios.delete(`${API_BASE}/journals/${id}`, getAuthHeader());
                 toast.success('تم حذف السند بنجاح');
                 fetchEntries();
             }
@@ -391,6 +415,24 @@ const PaymentsPage = () => {
             accessorKey: 'date',
             header: 'التاريخ',
             cell: ({ row }) => <span className="text-slate-500 text-sm">{new Date(row.original.date).toLocaleDateString('ar-DZ')}</span>
+        },
+        {
+            id: 'attachments',
+            header: '',
+            cell: ({ row }) => {
+                const count = row.original.attachments?.length || 0;
+                if (count === 0) return null;
+                return (
+                    <button
+                        onClick={(e) => { e.stopPropagation(); setViewAttachmentsEntry(row.original); }}
+                        className="flex items-center gap-1 text-slate-400 hover:text-blue-600 hover:bg-blue-50 p-1.5 rounded-lg transition-all"
+                        title={`${count} مرفق(ات) - انقر للعرض`}
+                    >
+                        <Paperclip size={12} />
+                        <span className="text-[10px] font-bold">{count}</span>
+                    </button>
+                );
+            }
         },
         {
             id: 'amounts',
@@ -448,7 +490,7 @@ const PaymentsPage = () => {
                             >
                                 <Eye size={16} />
                             </Button>
-                        ) : (
+                        ) : canEdit ? (
                             <Button
                                 size="icon"
                                 variant="ghost"
@@ -458,38 +500,52 @@ const PaymentsPage = () => {
                             >
                                 <Edit3 size={16} />
                             </Button>
-                        )}
-
-                        <Button
-                            size="icon"
-                            variant="ghost"
-                            onClick={() => handleExportSingle(entry)}
-                            className="w-9 h-9 text-rose-600 hover:text-rose-700 hover:bg-rose-50 rounded-xl transition-all"
-                            title="تصدير PDF"
-                        >
-                            <Download size={16} />
-                        </Button>
-
-                        {entry.status === 'POSTED' ? (
-                            <Button
-                                size="icon"
-                                variant="ghost"
-                                onClick={() => handleUnpost(entry.id)}
-                                className="w-9 h-9 text-amber-600 hover:text-amber-700 hover:bg-amber-100 rounded-xl transition-all"
-                                title="إلغاء الترحيل (مدير فقط)"
-                            >
-                                <RotateCcw size={16} />
-                            </Button>
                         ) : (
                             <Button
                                 size="icon"
                                 variant="ghost"
-                                onClick={() => handleDelete(entry.id)}
-                                className="w-9 h-9 text-rose-500 hover:text-rose-600 hover:bg-rose-100 rounded-xl transition-all"
-                                title="حذف"
+                                onClick={() => handleEdit(entry, true)}
+                                className="w-9 h-9 text-slate-400 hover:text-slate-500 hover:bg-slate-100 rounded-xl transition-all"
+                                title="عرض فقط (لا تملك صلاحية التعديل)"
                             >
-                                <Trash2 size={16} />
+                                <Eye size={16} />
                             </Button>
+                        )}
+
+                        {canExport && (
+                            <Button
+                                size="icon"
+                                variant="ghost"
+                                onClick={() => handleExportSingle(entry)}
+                                className="w-9 h-9 text-rose-600 hover:text-rose-700 hover:bg-rose-50 rounded-xl transition-all"
+                                title="تصدير PDF"
+                            >
+                                <Download size={16} />
+                            </Button>
+                        )}
+
+                        {canDelete && (
+                            entry.status === 'POSTED' ? (
+                                <Button
+                                    size="icon"
+                                    variant="ghost"
+                                    onClick={() => handleUnpost(entry.id)}
+                                    className="w-9 h-9 text-amber-600 hover:text-amber-700 hover:bg-amber-100 rounded-xl transition-all"
+                                    title="إلغاء الترحيل (مدير فقط)"
+                                >
+                                    <RotateCcw size={16} />
+                                </Button>
+                            ) : (
+                                <Button
+                                    size="icon"
+                                    variant="ghost"
+                                    onClick={() => handleDelete(entry.id)}
+                                    className="w-9 h-9 text-rose-500 hover:text-rose-600 hover:bg-rose-100 rounded-xl transition-all"
+                                    title="حذف"
+                                >
+                                    <Trash2 size={16} />
+                                </Button>
+                            )
                         )}
                     </div>
                 );
@@ -509,7 +565,7 @@ const PaymentsPage = () => {
                 description="إدارة كافة المصاريف والمدفوعات المالية والتحقق من القيد المزدوج"
                 iconClassName="bg-rose-600 shadow-rose-200"
             >
-                {view === 'form' && editingId && (
+                {view === 'form' && editingId && canExport && (
                     <Button
                         onClick={() => {
                             const entry = entries.find(e => e.id === editingId);
@@ -522,10 +578,19 @@ const PaymentsPage = () => {
                         PDF
                     </Button>
                 )}
-                <Button onClick={() => view === 'list' ? handleAddNew() : setView('list')} className='bg-rose-600 hover:bg-rose-700  shadow-lg shadow-rose-200 hover:shadow-rose-300 transition-all hover:-translate-y-0.5'>
-                    {view === 'list' ? <Plus size={20} className="ml-2" /> : <ChevronLeft size={20} className="ml-2 rotate-180" />}
-                    {view === 'list' ? 'إضافة سند صرف' : 'العودة'}
-                </Button>
+                {view === 'list' ? (
+                    canCreate && (
+                        <Button onClick={handleAddNew} className='bg-rose-600 hover:bg-rose-700  shadow-lg shadow-rose-200 hover:shadow-rose-300 transition-all hover:-translate-y-0.5'>
+                            <Plus size={20} className="ml-2" />
+                            إضافة سند صرف
+                        </Button>
+                    )
+                ) : (
+                    <Button onClick={() => setView('list')} className='bg-rose-600 hover:bg-rose-700  shadow-lg shadow-rose-200 hover:shadow-rose-300 transition-all hover:-translate-y-0.5'>
+                        <ChevronLeft size={20} className="ml-2 rotate-180" />
+                        العودة
+                    </Button>
+                )}
             </PageHeader>
 
             {view === 'list' ? (
@@ -593,6 +658,14 @@ const PaymentsPage = () => {
                     </div>
 
                     <div className="space-y-6">
+                        <div className="bg-white p-6 rounded-[2rem] border border-slate-200 shadow-lg">
+                            <AttachmentUpload
+                                attachments={attachments}
+                                onChange={setAttachments}
+                                disabled={isViewOnly}
+                                label="المرفقات والوثائق"
+                            />
+                        </div>
                         <div className="bg-white p-6 rounded-[2rem] border border-slate-200 shadow-lg space-y-4">
                             <div className="flex justify-between font-bold"><span>المدين:</span> <span>{totalBaseDebit.toLocaleString()}</span></div>
                             <div className="flex justify-between font-bold"><span>الدائن:</span> <span>{totalBaseCredit.toLocaleString()}</span></div>
@@ -643,6 +716,13 @@ const PaymentsPage = () => {
                 variant={confirmConfig.variant}
                 icon={confirmConfig.icon}
                 loading={confirmLoading}
+            />
+
+            <ViewAttachmentsModal
+                open={!!viewAttachmentsEntry}
+                onOpenChange={(open) => !open && setViewAttachmentsEntry(null)}
+                attachments={viewAttachmentsEntry?.attachments || []}
+                title={`مرفقات السند رقم: ${viewAttachmentsEntry?.entryNumber}`}
             />
         </div>
     );

@@ -15,7 +15,8 @@ import {
     UserCheck,
     UserMinus,
     UserX,
-    Globe
+    Globe,
+    UploadCloud
 } from 'lucide-react';
 import axios from 'axios';
 import { cn } from '@/lib/utils';
@@ -23,6 +24,8 @@ import { toast } from 'sonner';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { ImportMembersModal } from './ImportMembersModal';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import {
     Select,
     SelectContent,
@@ -50,7 +53,10 @@ export default function MembersPage() {
     const [selectedEntity, setSelectedEntity] = useState<string>('all');
 
     const [isModalOpen, setIsModalOpen] = useState(false);
+    const [isImportOpen, setIsImportOpen] = useState(false);
     const [editingMember, setEditingMember] = useState<any>(null);
+    const [memberToDelete, setMemberToDelete] = useState<any>(null);
+    const [isDeleting, setIsDeleting] = useState(false);
 
     const fetchData = async () => {
         setLoading(true);
@@ -72,14 +78,18 @@ export default function MembersPage() {
         fetchData();
     }, []);
 
-    const handleDelete = async (id: string) => {
-        if (!confirm('هل أنت متأكد من حذف هذا العضو؟')) return;
+    const handleDelete = async () => {
+        if (!memberToDelete) return;
+        setIsDeleting(true);
         try {
-            await axios.delete(`${API_BASE}/members/${id}`, AUTH_HEADER);
+            await axios.delete(`${API_BASE}/members/${memberToDelete.id}`, AUTH_HEADER);
             toast.success('تم حذف العضو بنجاح');
+            setMemberToDelete(null);
             fetchData();
         } catch (err: any) {
             toast.error(err.response?.data?.error || 'فشل حذف العضو');
+        } finally {
+            setIsDeleting(false);
         }
     };
 
@@ -112,6 +122,24 @@ export default function MembersPage() {
                 <div className="flex items-center gap-2 text-slate-700 font-bold">
                     <Calendar size={14} className="text-slate-400" />
                     {row.original.affiliationYear}
+                </div>
+            )
+        },
+        {
+            accessorKey: 'phone',
+            header: 'رقم الهاتف',
+            cell: ({ row }) => (
+                <div dir="ltr" className="text-right text-slate-600 font-medium">
+                    {row.original.phone ? row.original.phone : <span className="text-slate-300">-</span>}
+                </div>
+            )
+        },
+        {
+            accessorKey: 'manager.name',
+            header: 'الجهة المسؤولة (المسؤول)',
+            cell: ({ row }) => (
+                <div className="text-slate-600 text-sm font-medium">
+                    {row.original.manager?.name ? row.original.manager.name : <span className="text-slate-400 text-xs">لا يوجد</span>}
                 </div>
             )
         },
@@ -153,7 +181,7 @@ export default function MembersPage() {
                     <Button
                         size="icon"
                         variant="ghost"
-                        onClick={() => handleDelete(row.original.id)}
+                        onClick={() => setMemberToDelete(row.original)}
                         className="w-9 h-9 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-all border border-transparent hover:border-rose-100"
                     >
                         <Trash2 size={14} />
@@ -178,6 +206,14 @@ export default function MembersPage() {
                 description="قاعدة بيانات المشتركين وتاريخ انتسابهم وتوقفهم"
                 iconClassName="bg-gradient-to-br from-indigo-600 to-blue-700 shadow-indigo-200"
             >
+                <Button
+                    onClick={() => setIsImportOpen(true)}
+                    variant="outline"
+                    className="bg-white text-indigo-600 hover:bg-indigo-50 border-indigo-100 rounded-2xl h-12 px-6 shadow-sm flex gap-2 items-center font-bold"
+                >
+                    <UploadCloud size={20} />
+                    استيراد من Excel
+                </Button>
                 <Button
                     onClick={() => { setEditingMember(null); setIsModalOpen(true); }}
                     className="bg-slate-900 text-white hover:bg-black rounded-2xl h-12 px-6 shadow-xl shadow-slate-200 flex gap-2 items-center"
@@ -225,32 +261,60 @@ export default function MembersPage() {
                 />
             </div>
 
+            {
+                isImportOpen && (
+                    <ImportMembersModal
+                        entities={entities}
+                        onClose={() => setIsImportOpen(false)}
+                        onSuccess={fetchData}
+                    />
+                )
+            }
+
             {isModalOpen && (
                 <MemberModal
                     member={editingMember}
                     entities={entities}
+                    members={members}
                     onClose={() => setIsModalOpen(false)}
                     onSave={fetchData}
                 />
             )}
+
+            <ConfirmDialog
+                open={!!memberToDelete}
+                onOpenChange={(open) => !open && setMemberToDelete(null)}
+                onConfirm={handleDelete}
+                title="حذف عضو"
+                description={`هل أنت متأكد من حذف العضو "${memberToDelete?.name}"؟ سيتم حذف جميع بياناته واشتراكاته بشكل نهائي.`}
+                confirmLabel="حذف العضو"
+                cancelLabel="إلغاء"
+                variant="danger"
+                icon={Trash2}
+                loading={isDeleting}
+            />
         </div>
     );
 }
 
-const MemberModal = ({ member, entities, onClose, onSave }: any) => {
+const MemberModal = ({ member, entities, members, onClose, onSave }: any) => {
     const [formData, setFormData] = useState(member ? {
         id: member.id,
         name: member.name || '',
         entityId: member.entityId || '',
         affiliationYear: member.affiliationYear || new Date().getFullYear(),
         status: member.status || 'ACTIVE',
-        stoppedAt: member.stoppedAt ? new Date(member.stoppedAt).getFullYear() : null
+        stoppedAt: member.stoppedAt ? new Date(member.stoppedAt).getFullYear() : null,
+        phone: member.phone || '',
+        managerId: member.managerId || 'none'
     } : {
         name: '',
         entityId: entities[0]?.id || '',
         affiliationYear: new Date().getFullYear(),
         status: 'ACTIVE',
-        stoppedAt: null
+        stoppedAt: null,
+        phone: '',
+        managerId: 'none'
     });
     const [loading, setLoading] = useState(false);
 
@@ -260,6 +324,10 @@ const MemberModal = ({ member, entities, onClose, onSave }: any) => {
             return toast.error('يرجى التأكد من إدخال اسم العضو وجهته');
         }
 
+        if ((formData.status === 'DECEASED' || formData.status === 'INACTIVE') && !formData.stoppedAt) {
+            return toast.error('يرجى تحديد سنة التوقف أو الوفاة عند اختيار حالة غير نشطة');
+        }
+
         setLoading(true);
         try {
             const payload = {
@@ -267,7 +335,9 @@ const MemberModal = ({ member, entities, onClose, onSave }: any) => {
                 entityId: formData.entityId,
                 affiliationYear: Number(formData.affiliationYear) || new Date().getFullYear(),
                 status: formData.status,
-                stoppedAt: formData.stoppedAt ? new Date(Number(formData.stoppedAt), 0, 1).toISOString() : null
+                stoppedAt: formData.stoppedAt ? new Date(Number(formData.stoppedAt), 0, 1).toISOString() : null,
+                phone: formData.phone.trim() || null,
+                managerId: formData.managerId === 'none' ? null : formData.managerId
             };
 
             if (member) {
@@ -324,6 +394,37 @@ const MemberModal = ({ member, entities, onClose, onSave }: any) => {
                                     ))}
                                 </SelectContent>
                             </Select>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                                <label className="text-sm font-black text-slate-700 mr-1 flex items-center justify-between">
+                                    رقم الهاتف
+                                    <span className="text-[10px] text-slate-400">(دولي)</span>
+                                </label>
+                                <Input
+                                    type="text"
+                                    placeholder="+213..."
+                                    className="w-full px-5 h-14 rounded-2xl bg-slate-50 border-slate-200 focus-visible:ring-indigo-500 font-bold"
+                                    dir="ltr"
+                                    value={formData.phone}
+                                    onChange={e => setFormData({ ...formData, phone: e.target.value })}
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <label className="text-sm font-black text-slate-700 mr-1">العضو المسؤول عنه</label>
+                                <Select value={formData.managerId} onValueChange={(v) => setFormData({ ...formData, managerId: v })}>
+                                    <SelectTrigger className="w-full px-5 h-14 rounded-2xl bg-slate-50 border-slate-200 focus:ring-2 focus:ring-indigo-500 font-bold text-right" dir="rtl">
+                                        <SelectValue placeholder="اختر المسؤول" />
+                                    </SelectTrigger>
+                                    <SelectContent dir="rtl">
+                                        <SelectItem value="none">بدون مسؤول (مستقل)</SelectItem>
+                                        {members.filter((m: any) => m.id !== formData.id).map((m: any) => (
+                                            <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
                         </div>
 
                         <div className="grid grid-cols-2 gap-4">

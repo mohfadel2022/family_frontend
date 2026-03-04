@@ -40,6 +40,11 @@ import {
 
 import { AccountModal } from '@/components/AccountModal';
 import { ConfirmationDialog } from '@/components/ui/ConfirmationDialog';
+import { useAuth } from '@/context/AuthContext';
+
+const getAuthHeader = () => ({
+    headers: { Authorization: `Bearer ${localStorage.getItem('token') || 'mock-token'}` }
+});
 
 // ─── Account Item ─────────────────────────────────────────────────────────────
 interface AccountItemProps {
@@ -59,13 +64,15 @@ interface AccountItemProps {
     isExpanded: boolean;
     onToggle: (id: string) => void;
     searchQuery: string;
+    canEdit?: boolean;
+    canDelete?: boolean;
 }
 
 const AccountItem = ({
     id, name, code, type, balance, baseBalance, baseCurrencyCode,
     hasMixedCurrencies, childCurrencies,
     currency, children, onEdit, onDelete,
-    isExpanded, onToggle, searchQuery
+    isExpanded, onToggle, searchQuery, canEdit = true, canDelete = true
 }: AccountItemProps) => {
     const hasChildren = children && React.Children.count(children) > 0;
     const fmtNum = (n: number) => n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -166,22 +173,26 @@ const AccountItem = ({
                     </div>
 
                     <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-all scale-95 group-hover:scale-100">
-                        <Button
-                            size="icon"
-                            variant="ghost"
-                            onClick={(e) => { e.stopPropagation(); onEdit(); }}
-                            className="w-10 h-10 text-slate-400 hover:text-blue-600 hover:bg-white rounded-xl shadow-sm hover:shadow-md transition-all border border-transparent hover:border-blue-100"
-                        >
-                            <Edit2 size={16} />
-                        </Button>
-                        <Button
-                            size="icon"
-                            variant="ghost"
-                            onClick={(e) => { e.stopPropagation(); onDelete(); }}
-                            className="w-10 h-10 text-slate-400 hover:text-rose-600 hover:bg-white rounded-xl shadow-sm hover:shadow-md transition-all border border-transparent hover:border-rose-100"
-                        >
-                            <Trash2 size={16} />
-                        </Button>
+                        {canEdit && (
+                            <Button
+                                size="icon"
+                                variant="ghost"
+                                onClick={(e) => { e.stopPropagation(); onEdit(); }}
+                                className="w-10 h-10 text-slate-400 hover:text-blue-600 hover:bg-white rounded-xl shadow-sm hover:shadow-md transition-all border border-transparent hover:border-blue-100"
+                            >
+                                <Edit2 size={16} />
+                            </Button>
+                        )}
+                        {canDelete && (
+                            <Button
+                                size="icon"
+                                variant="ghost"
+                                onClick={(e) => { e.stopPropagation(); onDelete(); }}
+                                className="w-10 h-10 text-slate-400 hover:text-rose-600 hover:bg-white rounded-xl shadow-sm hover:shadow-md transition-all border border-transparent hover:border-rose-100"
+                            >
+                                <Trash2 size={16} />
+                            </Button>
+                        )}
                     </div>
                 </div>
             </div>
@@ -197,6 +208,11 @@ const AccountItem = ({
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 const AccountsPage = () => {
+    const { checkPermission } = useAuth();
+    const canCreate = checkPermission('ACCOUNTS_CREATE');
+    const canEdit = checkPermission('ACCOUNTS_EDIT');
+    const canDelete = checkPermission('ACCOUNTS_DELETE');
+
     const [accounts, setAccounts] = useState<any[]>([]);
     const [currencies, setCurrencies] = useState<any[]>([]);
     const [branches, setBranches] = useState<any[]>([]);
@@ -225,9 +241,9 @@ const AccountsPage = () => {
     const fetchData = async () => {
         try {
             const [accRes, currRes, branchRes] = await Promise.all([
-                axios.get('http://localhost:4000/api/meta/accounts', { headers: { Authorization: 'Bearer mock-token' } }),
-                axios.get('http://localhost:4000/api/meta/', { headers: { Authorization: 'Bearer mock-token' } }),
-                axios.get('http://localhost:4000/api/meta/branches', { headers: { Authorization: 'Bearer mock-token' } })
+                axios.get('http://localhost:4000/api/meta/accounts', getAuthHeader()),
+                axios.get('http://localhost:4000/api/meta/currencies', getAuthHeader()),
+                axios.get('http://localhost:4000/api/meta/branches', getAuthHeader())
             ]);
             const accs = accRes.data.sort((a: any, b: any) => a.code.localeCompare(b.code, undefined, { numeric: true }));
             setAccounts(accs);
@@ -335,6 +351,8 @@ const AccountsPage = () => {
                         isExpanded={isExpanded}
                         onToggle={handleToggle}
                         searchQuery={searchQuery}
+                        canEdit={canEdit}
+                        canDelete={canDelete}
                     >
                         {buildTree(a.id)}
                     </AccountItem>
@@ -356,13 +374,15 @@ const AccountsPage = () => {
                 iconSize={24}
                 className="mb-8"
             >
-                <Button
-                    onClick={() => { setEditingAccount(null); setIsModalOpen(true); }}
-                    className="shadow-xl"
-                >
-                    <Plus size={18} className="mr-2 group-hover:rotate-90 transition-transform duration-300" />
-                    إضافة حساب جديد
-                </Button>
+                {canCreate && (
+                    <Button
+                        onClick={() => { setEditingAccount(null); setIsModalOpen(true); }}
+                        className="shadow-xl"
+                    >
+                        <Plus size={18} className="mr-2 group-hover:rotate-90 transition-transform duration-300" />
+                        إضافة حساب جديد
+                    </Button>
+                )}
             </PageHeader>
 
             <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">

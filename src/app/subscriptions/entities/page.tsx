@@ -56,7 +56,7 @@ export default function EntitiesPage() {
                 axios.get(`${API_BASE}/entities`, AUTH_HEADER),
                 axios.get(`${META_BASE}/users`, AUTH_HEADER),
                 axios.get(`${META_BASE}/branches`, AUTH_HEADER),
-                axios.get(`${META_BASE}/`, AUTH_HEADER)
+                axios.get(`${META_BASE}/currencies`, AUTH_HEADER)
             ]);
             setEntities(entRes.data);
             setUsers(userRes.data);

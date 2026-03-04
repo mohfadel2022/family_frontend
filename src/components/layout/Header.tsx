@@ -15,28 +15,20 @@ import {
 } from '@/components/ui/dropdown-menu';
 import Link from 'next/link';
 
+import { useAuth, UserRole } from '@/context/AuthContext';
+
 const Header = () => {
     const { toggleSidebar } = useSidebar();
-    const [user, setUser] = useState<{ name: string; username: string } | null>(null);
+    const { user, loading } = useAuth();
 
-    useEffect(() => {
-        const fetchUser = async () => {
-            try {
-                const res = await fetch('http://localhost:4000/api/meta/me', {
-                    headers: {
-                        'Authorization': 'Bearer mock-token'
-                    }
-                });
-                if (res.ok) {
-                    const data = await res.json();
-                    setUser(data);
-                }
-            } catch (error) {
-                console.error('Error fetching user:', error);
-            }
-        };
-        fetchUser();
-    }, []);
+    const getRoleLabel = (role?: UserRole) => {
+        switch (role) {
+            case 'ADMIN': return 'مدير النظام';
+            case 'RESPONSIBLE': return 'مسؤول النظام';
+            case 'ENCARGADO': return 'مسؤول جهة';
+            default: return 'مستخدم';
+        }
+    };
 
     const userInitial = user?.name ? user.name.charAt(0) : 'ع';
 
@@ -60,10 +52,10 @@ const Header = () => {
 
             <div className="flex items-center gap-3">
                 <div className="hidden sm:flex flex-col items-end mr-3 border-r border-slate-200 pr-4">
-                    <span className="text-sm font-bold text-slate-800">{user?.name || 'جاري التحميل...'}</span>
+                    <span className="text-sm font-bold text-slate-800">{loading ? 'جاري التحميل...' : user?.name}</span>
                     <span className="text-[10px] text-emerald-500 font-bold flex items-center gap-1.5 mt-0.5">
                         <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse ring-2 ring-emerald-500/20"></span>
-                        متصل الآن
+                        {getRoleLabel(user?.role)}
                     </span>
                 </div>
 

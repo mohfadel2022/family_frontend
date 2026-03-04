@@ -18,6 +18,8 @@ export const metadata: Metadata = {
   description: "نظام محاسبي ذكي لإدارة الشؤون المالية للعائلة",
 };
 
+import { AuthProvider } from "@/context/AuthContext";
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -30,15 +32,17 @@ export default function RootLayout({
       >
         <TooltipProvider delayDuration={0}>
           <Toaster position="top-center" dir="rtl" richColors />
-          <SidebarProvider>
-            <Sidebar aria-label="Sidebar Navigation" />
-            <main className="flex-1 flex flex-col h-screen overflow-hidden">
-              <Header />
-              <div className="p-4 md:p-6 lg:p-8 flex-1 overflow-y-auto">
-                {children}
-              </div>
-            </main>
-          </SidebarProvider>
+          <AuthProvider>
+            <SidebarProvider>
+              <Sidebar aria-label="Sidebar Navigation" />
+              <main className="flex-1 flex flex-col h-screen overflow-hidden">
+                <Header />
+                <div className="p-4 md:p-6 lg:p-8 flex-1 overflow-y-auto">
+                  {children}
+                </div>
+              </main>
+            </SidebarProvider>
+          </AuthProvider>
         </TooltipProvider>
       </body>
     </html>

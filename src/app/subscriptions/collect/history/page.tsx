@@ -42,7 +42,7 @@ export default function CollectHistoryPage() {
         try {
             const [collRes, curRes] = await Promise.all([
                 axios.get(`${API_BASE}/collections`, AUTH_HEADER),
-                axios.get(`${META_BASE}/`, AUTH_HEADER)
+                axios.get(`${META_BASE}/currencies`, AUTH_HEADER)
             ]);
             setCollections(collRes.data);
             const base = curRes.data.find((c: any) => c.isBase);

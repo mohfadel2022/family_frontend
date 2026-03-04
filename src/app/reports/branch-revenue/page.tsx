@@ -25,7 +25,7 @@ const BranchRevenuePage = () => {
             // We'll fetch all branches and for each branch, get its income statement filtered by revenue
             const [branchRes, currRes] = await Promise.all([
                 axios.get(`${API_BASE}/branches`, AUTH_HEADER),
-                axios.get(`${API_BASE}/`, AUTH_HEADER)
+                axios.get(`${API_BASE}/currencies`, AUTH_HEADER)
             ]);
 
             setBaseCurrency(currRes.data.find((c: any) => c.isBase) || { code: '---' });

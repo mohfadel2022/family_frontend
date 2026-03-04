@@ -95,7 +95,7 @@ const SettingsPage = () => {
     const fetchData = async () => {
         try {
             const [currRes, branchRes, userRes] = await Promise.all([
-                axios.get(`${API_BASE}/`, AUTH_HEADER),
+                axios.get(`${API_BASE}/currencies`, AUTH_HEADER),
                 axios.get(`${API_BASE}/branches`, AUTH_HEADER),
                 axios.get(`${API_BASE}/users`, AUTH_HEADER)
             ]);

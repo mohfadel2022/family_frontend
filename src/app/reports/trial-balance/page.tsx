@@ -46,7 +46,7 @@ const TrialBalancePage = () => {
                     ...AUTH_HEADER
                 }),
                 axios.get(`${API_BASE}/branches`, AUTH_HEADER),
-                axios.get(`${API_BASE}/`, AUTH_HEADER)
+                axios.get(`${API_BASE}/currencies`, AUTH_HEADER)
             ]);
 
             setReport(tbRes.data);

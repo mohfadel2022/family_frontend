@@ -11,7 +11,8 @@ import {
     Globe,
     LayoutDashboard,
     PieChart,
-    History
+    History,
+    TrendingUp
 } from 'lucide-react';
 import Link from 'next/link';
 import { cn } from '@/lib/utils';
@@ -87,6 +88,13 @@ const ReportsDashboard = () => {
             href: '/reports/currency-history',
             icon: History,
             color: 'bg-indigo-500'
+        },
+        {
+            title: 'جدول الاشتراكات (Pivot)',
+            description: 'تقرير شامل يوضح حالة تسديد الاشتراكات لجميع الأعضاء عبر السنوات.',
+            href: '/reports/subscriptions',
+            icon: TrendingUp,
+            color: 'bg-blue-600'
         }
     ];
 
