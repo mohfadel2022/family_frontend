@@ -57,11 +57,9 @@ import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { AttachmentUpload } from '@/components/AttachmentUpload';
 import { ViewAttachmentsModal } from '@/components/ViewAttachmentsModal';
 import { useAuth } from '@/context/AuthContext';
+import { API_BASE, getAuthHeader } from '@/lib/api';
 
-const API_BASE = 'http://localhost:4000/api';
-const getAuthHeader = () => ({
-    headers: { Authorization: `Bearer ${localStorage.getItem('token') || 'mock-token'}` }
-});
+// Remove local API_BASE and getAuthHeader, now using imports from @/lib/api
 
 interface JournalLine {
     id?: string;
@@ -285,7 +283,7 @@ const ReceiptsPage = () => {
 
         // Fetch members if it's a subscription collection
         try {
-            const res = await axios.get(`http://localhost:4000/api/subscriptions/entry/${entry.id}/members`, getAuthHeader());
+            const res = await axios.get(`${API_BASE}/subscriptions/entry/${entry.id}/members`, getAuthHeader());
             setSubsMembers(res.data);
         } catch {
             setSubsMembers([]);

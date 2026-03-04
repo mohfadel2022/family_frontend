@@ -20,6 +20,7 @@ import axios from 'axios';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { useAuth } from '@/context/AuthContext';
+import { META_BASE } from '@/lib/api';
 
 // ─── Feature card shown on the left panel ─────────────────────────────────────
 const Feature = ({ icon: Icon, title, desc }: { icon: any; title: string; desc: string }) => (
@@ -49,7 +50,7 @@ const LoginPage = () => {
         setLoading(true);
 
         try {
-            const res = await axios.post('http://localhost:4000/api/meta/auth/login', formData);
+            const res = await axios.post(`${META_BASE}/auth/login`, formData);
             await login(res.data.token);
             const redirectTo = new URLSearchParams(window.location.search).get('redirect') || '/';
             router.replace(redirectTo);

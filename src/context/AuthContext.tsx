@@ -28,7 +28,9 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-const API_BASE = 'http://localhost:4000/api/meta';
+import { META_BASE } from '@/lib/api';
+
+const API_BASE = META_BASE;
 
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     const [user, setUser] = useState<User | null>(null);
@@ -37,7 +39,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     const fetchUser = async (tokenOverride?: string) => {
         const token = tokenOverride || localStorage.getItem('token') || 'mock-token';
         try {
-            const res = await axios.get(`${API_BASE}/me`, {
+            const res = await axios.get(`${META_BASE}/me`, {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
             setUser(res.data);

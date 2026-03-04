@@ -41,10 +41,9 @@ import {
 import { AccountModal } from '@/components/AccountModal';
 import { ConfirmationDialog } from '@/components/ui/ConfirmationDialog';
 import { useAuth } from '@/context/AuthContext';
+import { META_BASE, getAuthHeader } from '@/lib/api';
 
-const getAuthHeader = () => ({
-    headers: { Authorization: `Bearer ${localStorage.getItem('token') || 'mock-token'}` }
-});
+// Using global getAuthHeader helper from @/lib/api
 
 // ─── Account Item ─────────────────────────────────────────────────────────────
 interface AccountItemProps {
@@ -241,9 +240,9 @@ const AccountsPage = () => {
     const fetchData = async () => {
         try {
             const [accRes, currRes, branchRes] = await Promise.all([
-                axios.get('http://localhost:4000/api/meta/accounts', getAuthHeader()),
-                axios.get('http://localhost:4000/api/meta/currencies', getAuthHeader()),
-                axios.get('http://localhost:4000/api/meta/branches', getAuthHeader())
+                axios.get(`${META_BASE}/accounts`, getAuthHeader()),
+                axios.get(`${META_BASE}/currencies`, getAuthHeader()),
+                axios.get(`${META_BASE}/branches`, getAuthHeader())
             ]);
             const accs = accRes.data.sort((a: any, b: any) => a.code.localeCompare(b.code, undefined, { numeric: true }));
             setAccounts(accs);
@@ -291,9 +290,7 @@ const AccountsPage = () => {
         if (!accountToDelete) return;
         setIsDeleting(true);
         try {
-            await axios.delete(`http://localhost:4000/api/meta/accounts/${accountToDelete}`, {
-                headers: { Authorization: 'Bearer mock-token' }
-            });
+            await axios.delete(`${META_BASE}/accounts/${accountToDelete}`, getAuthHeader());
             toast.success('تم حذف الحساب بنجاح', {
                 description: 'تمت إزالة الحساب وكافة البيانات المرتبطة به من النظام.'
             });
