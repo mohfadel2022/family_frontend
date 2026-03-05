@@ -42,8 +42,10 @@ import {
 } from '@/components/ui/dialog';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 
-const API_BASE = 'http://localhost:4000/api/meta';
-const AUTH_HEADER = { headers: { Authorization: 'Bearer mock-token' } };
+import { META_BASE, getAuthHeader } from '@/lib/api';
+
+const API_BASE = META_BASE;
+const AUTH_HEADER = getAuthHeader();
 
 const SettingsPage = () => {
     const [currencies, setCurrencies] = useState<any[]>([]);

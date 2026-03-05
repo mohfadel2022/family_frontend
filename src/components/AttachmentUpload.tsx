@@ -5,6 +5,7 @@ import { Paperclip, X, Loader2, FileText, ImageIcon, Film } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import axios from 'axios';
 import { toast } from 'sonner';
+import { UPLOAD_BASE, getAuthHeader, API_URL } from '@/lib/api';
 
 interface Attachment {
     id?: string;
@@ -21,15 +22,12 @@ interface AttachmentUploadProps {
     disabled?: boolean;
 }
 
-const API_BASE = 'http://localhost:4000/api/upload';
+const API_BASE = UPLOAD_BASE;
 
 export const AttachmentUpload = ({ attachments, onChange, label = "المرفقات", disabled = false }: AttachmentUploadProps) => {
     const [uploading, setUploading] = useState(false);
 
-    const getAuthHeader = () => {
-        const token = localStorage.getItem('token') || 'mock-token';
-        return { headers: { Authorization: `Bearer ${token}` } };
-    };
+    // Local getAuthHeader removed in favor of import
 
     const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
@@ -135,7 +133,7 @@ export const AttachmentUpload = ({ attachments, onChange, label = "المرفق�
                                 </div>
                                 <div className="flex items-center gap-1">
                                     <a
-                                        href={`http://localhost:4000${file.fileUrl}`}
+                                        href={`${API_URL.replace('/api', '')}${file.fileUrl}`}
                                         target="_blank"
                                         rel="noopener noreferrer"
                                         className="p-1.5 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-100 transition-all"

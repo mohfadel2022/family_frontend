@@ -42,8 +42,10 @@ import {
 import { DataTable } from '@/components/ui/data-table';
 import { ColumnDef } from '@tanstack/react-table';
 
-const API_BASE = 'http://localhost:4000/api/subscriptions';
-const AUTH_HEADER = { headers: { Authorization: 'Bearer mock-token' } };
+import { SUB_BASE, getAuthHeader } from '@/lib/api';
+
+const API_BASE = SUB_BASE;
+const AUTH_HEADER = getAuthHeader();
 
 export default function MembersPage() {
     const [members, setMembers] = useState<any[]>([]);

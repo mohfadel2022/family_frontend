@@ -40,9 +40,10 @@ import { SearchableAccountSelect } from '@/components/SearchableAccountSelect';
 import { AccountModal } from '@/components/AccountModal';
 import { useRouter, useSearchParams } from 'next/navigation';
 
-const API_BASE = 'http://localhost:4000/api/subscriptions';
-const META_BASE = 'http://localhost:4000/api/meta';
-const AUTH_HEADER = { headers: { Authorization: 'Bearer mock-token' } };
+import { SUB_BASE, META_BASE, getAuthHeader } from '@/lib/api';
+
+const API_BASE = SUB_BASE;
+const AUTH_HEADER = getAuthHeader();
 
 function CollectPageContent() {
     const router = useRouter();

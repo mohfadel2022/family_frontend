@@ -46,8 +46,10 @@ import {
     TableRow,
 } from '@/components/ui/table';
 
-const API_BASE = 'http://localhost:4000/api/meta';
-const AUTH_HEADER = { headers: { Authorization: 'Bearer mock-token' } };
+import { META_BASE, getAuthHeader } from '@/lib/api';
+
+const API_BASE = META_BASE;
+const AUTH_HEADER = getAuthHeader();
 
 const AuditLogPage = () => {
     const [logs, setLogs] = useState<any[]>([]);
@@ -180,16 +182,16 @@ const AuditLogPage = () => {
 
     return (
         <div className="max-w-5xl mx-auto space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-700">
-          {selectedLogs.size > 0 && (
-                        <Button
-                            onClick={handleBulkDelete}
-                            variant="destructive"
-                            className="z-100 fixed top-20 left-4 bg-rose-500 hover:bg-rose-600 text-white rounded-xl h-10 px-4 mr-3 flex items-center gap-2 transition-all shadow-md shadow-rose-500/20"
-                        >
-                            <Trash2 size={16} />
-                            حذف المحدد ({selectedLogs.size})
-                        </Button>
-                    )}
+            {selectedLogs.size > 0 && (
+                <Button
+                    onClick={handleBulkDelete}
+                    variant="destructive"
+                    className="z-100 fixed top-20 left-4 bg-rose-500 hover:bg-rose-600 text-white rounded-xl h-10 px-4 mr-3 flex items-center gap-2 transition-all shadow-md shadow-rose-500/20"
+                >
+                    <Trash2 size={16} />
+                    حذف المحدد ({selectedLogs.size})
+                </Button>
+            )}
             {/* Standard Premium Header */}
             <PageHeader
                 icon={Shield}
@@ -206,7 +208,7 @@ const AuditLogPage = () => {
                         value={searchTerm}
                         onChange={(e) => setSearchTerm(e.target.value)}
                     />
-                    
+
                 </div>
             </PageHeader>
 

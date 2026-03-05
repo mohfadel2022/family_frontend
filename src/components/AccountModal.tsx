@@ -21,8 +21,9 @@ import {
     SelectValue,
 } from '@/components/ui/select';
 
-const API_BASE = 'http://localhost:4000/api';
-const AUTH_HEADER = { headers: { Authorization: 'Bearer mock-token' } };
+import { API_BASE, getAuthHeader } from '@/lib/api';
+
+const AUTH_HEADER = getAuthHeader();
 
 export const AccountModal = ({ account, accounts, currencies, branches, onClose, onSave }: any) => {
     const [formData, setFormData] = useState(account || {

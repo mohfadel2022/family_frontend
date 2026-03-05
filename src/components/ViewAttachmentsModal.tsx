@@ -9,6 +9,7 @@ import {
 } from '@/components/ui/dialog';
 import { FileText, ImageIcon, Film, Download, ExternalLink } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { API_URL } from '@/lib/api';
 
 interface Attachment {
     id?: string;
@@ -54,7 +55,7 @@ export const ViewAttachmentsModal = ({ open, onOpenChange, attachments, title = 
                         ) : (
                             attachments.map((file, idx) => {
                                 const Icon = getFileIcon(file.fileType);
-                                const fileUrl = `http://localhost:4000${file.fileUrl}`;
+                                const fileUrl = `${API_URL.replace('/api', '')}${file.fileUrl}`;
                                 const previewable = isPreviewable(file.fileType);
 
                                 return (
@@ -108,7 +109,7 @@ export const ViewAttachmentsModal = ({ open, onOpenChange, attachments, title = 
                         <DialogTitle className="font-black text-lg text-slate-800 flex justify-between items-center w-full pr-6">
                             <span className="truncate">{selectedAttachment?.fileName}</span>
                             <a
-                                href={`http://localhost:4000${selectedAttachment?.fileUrl || ''}`}
+                                href={`${API_URL.replace('/api', '')}${selectedAttachment?.fileUrl || ''}`}
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="text-sm text-blue-600 hover:underline flex items-center gap-1 ml-4 shrink-0"
@@ -121,13 +122,13 @@ export const ViewAttachmentsModal = ({ open, onOpenChange, attachments, title = 
                     <div className="flex-1 bg-slate-100/50 rounded-xl overflow-hidden relative mt-2">
                         {selectedAttachment && selectedAttachment.fileType?.startsWith('image/') ? (
                             <img
-                                src={`http://localhost:4000${selectedAttachment.fileUrl}`}
+                                src={`${API_URL.replace('/api', '')}${selectedAttachment.fileUrl}`}
                                 alt={selectedAttachment.fileName}
                                 className="w-full h-full object-contain"
                             />
                         ) : selectedAttachment && selectedAttachment.fileType === 'application/pdf' ? (
                             <iframe
-                                src={`http://localhost:4000${selectedAttachment.fileUrl}`}
+                                src={`${API_URL.replace('/api', '')}${selectedAttachment.fileUrl}`}
                                 className="w-full h-full border-0"
                                 title={selectedAttachment.fileName}
                             />

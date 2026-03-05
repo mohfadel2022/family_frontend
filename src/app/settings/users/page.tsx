@@ -39,12 +39,10 @@ import {
 } from '@/components/ui/dialog';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 
-const API_BASE = 'http://localhost:4000/api/meta';
+import { META_BASE, getAuthHeader } from '@/lib/api';
 
-const getAuthHeader = () => {
-    const token = localStorage.getItem('token') || 'mock-token';
-    return { headers: { Authorization: `Bearer ${token}` } };
-};
+const API_BASE = META_BASE;
+const AUTH_HEADER = getAuthHeader();
 
 export default function UsersPage() {
     const [users, setUsers] = useState<any[]>([]);

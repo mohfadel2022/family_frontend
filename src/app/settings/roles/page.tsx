@@ -27,7 +27,9 @@ import { toast } from 'sonner';
 
 import { useAuth } from '@/context/AuthContext';
 
-const API_BASE = 'http://localhost:4000/api/meta';
+import { META_BASE, getAuthHeader } from '@/lib/api';
+
+const API_BASE = META_BASE;
 
 interface Permission {
     id: string;
@@ -60,10 +62,7 @@ export default function RolesPage() {
         permissionIds: [] as string[]
     });
 
-    const getAuthHeader = () => {
-        const token = localStorage.getItem('token') || 'mock-token';
-        return { headers: { Authorization: `Bearer ${token}` } };
-    };
+    // Local getAuthHeader removed in favor of import
 
     const fetchData = async () => {
         if (!isAdmin && localStorage.getItem('token')) return;

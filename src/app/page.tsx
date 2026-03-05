@@ -25,8 +25,10 @@ import { Badge } from '@/components/ui/badge';
 import axios from 'axios';
 import { toast } from 'sonner';
 
-const API_BASE = 'http://localhost:4000/api';
-const AUTH_HEADER = { headers: { Authorization: 'Bearer mock-token' } };
+import { API_BASE as API_URL, getAuthHeader } from '@/lib/api';
+
+const API_BASE = API_URL;
+const AUTH_HEADER = getAuthHeader();
 
 // ─── Multi-Currency Card ────────────────────────────────────────────────
 const CurrencyCard = ({

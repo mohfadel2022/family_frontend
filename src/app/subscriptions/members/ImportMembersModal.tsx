@@ -8,8 +8,10 @@ import * as XLSX from 'xlsx';
 import axios from 'axios';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
-const API_BASE = 'http://localhost:4000/api/subscriptions';
-const AUTH_HEADER = { headers: { Authorization: 'Bearer mock-token' } };
+import { SUB_BASE, getAuthHeader } from '@/lib/api';
+
+const API_BASE = SUB_BASE;
+const AUTH_HEADER = getAuthHeader();
 
 interface Props {
     onClose: () => void;

@@ -37,8 +37,9 @@ import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { exportToExcel, exportToPDF } from '@/lib/exportUtils';
 
-const API_BASE = 'http://localhost:4000/api';
-const AUTH_HEADER = { headers: { Authorization: 'Bearer mock-token' } };
+import { API_BASE, getAuthHeader, SUB_BASE } from '@/lib/api';
+
+const AUTH_HEADER = getAuthHeader();
 
 // Year colors palette
 const YEAR_COLORS: Record<number, { bg: string, text: string, border: string }> = {
@@ -133,7 +134,7 @@ export default function SubscriptionPivotReport() {
     const fetchReport = async () => {
         setLoading(true);
         try {
-            const res = await axios.get(`${API_BASE}/subscriptions/reports/pivot`, AUTH_HEADER);
+            const res = await axios.get(`${SUB_BASE}/reports/pivot`, AUTH_HEADER);
             setData(res.data);
 
             // Only set defaults if startYear/endYear are still empty (meaning no localStorage found)
