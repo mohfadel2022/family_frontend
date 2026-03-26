@@ -3,7 +3,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import axios from 'axios';
 
-export type UserRole = 'ADMIN' | 'RESPONSIBLE' | 'ENCARGADO' | string;
+export type UserRole = 'ADMIN' | 'RESPONSABLE' | 'ENCARGADO' | string;
 
 interface User {
     id: string;
@@ -17,12 +17,12 @@ interface AuthContextType {
     user: User | null;
     loading: boolean;
     isAdmin: boolean;
-    isResponsible: boolean;
+    isRESPONSABLE: boolean;
     isEncargado: boolean;
     hasPermission: (roles: UserRole[]) => boolean;
-    checkPermission: (code: string) => boolean;
+    checkPermission: (code: string | string[]) => boolean;
     refreshUser: () => Promise<void>;
-    login: (token: string) => Promise<void>;
+    login: (token: string, rememberMe?: boolean) => Promise<void>;
     logout: () => void;
 }
 
@@ -37,19 +37,28 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     const [loading, setLoading] = useState(true);
 
     const fetchUser = async (tokenOverride?: string) => {
-        const token = tokenOverride || localStorage.getItem('token') || 'mock-token';
+        let token = tokenOverride;
+        if (!token) {
+            token = typeof window !== 'undefined' ? (sessionStorage.getItem('token') || localStorage.getItem('token') || 'mock-token') : 'mock-token';
+        }
         try {
             const res = await axios.get(`${META_BASE}/me`, {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
             setUser(res.data);
         } catch (error: any) {
-            console.error('Error fetching user:', error);
             setUser(null);
-            if (error.response?.status === 401 && !tokenOverride && localStorage.getItem('token')) {
-                // If it was a real token that failed, clear it
-                localStorage.removeItem('token');
-                document.cookie = `auth-token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT`;
+            if (error.response?.status === 401) {
+                // Expected unauthenticated state, no need to show an error overlay
+                if (!tokenOverride) {
+                    if (typeof window !== 'undefined') {
+                        localStorage.removeItem('token');
+                        sessionStorage.removeItem('token');
+                    }
+                    document.cookie = `auth-token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT`;
+                }
+            } else {
+                console.error('Error fetching user:', error.message || error);
             }
         } finally {
             setLoading(false);
@@ -60,21 +69,31 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         fetchUser();
     }, []);
 
-    const login = async (token: string) => {
-        localStorage.setItem('token', token);
-        document.cookie = `auth-token=${token}; path=/; max-age=${60 * 60 * 24 * 7}; SameSite=Strict`;
+    const login = async (token: string, rememberMe = true) => {
+        if (rememberMe) {
+            localStorage.setItem('token', token);
+            sessionStorage.removeItem('token');
+            document.cookie = `auth-token=${token}; path=/; max-age=${60 * 60 * 24 * 7}; SameSite=Strict`;
+        } else {
+            sessionStorage.setItem('token', token);
+            localStorage.removeItem('token');
+            document.cookie = `auth-token=${token}; path=/; SameSite=Strict`; // Session cookie
+        }
         await fetchUser(token);
     };
 
     const logout = () => {
-        localStorage.removeItem('token');
+        if (typeof window !== 'undefined') {
+            localStorage.removeItem('token');
+            sessionStorage.removeItem('token');
+        }
         document.cookie = `auth-token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT`;
         setUser(null);
         window.location.href = '/login';
     };
 
     const isAdmin = user?.role === 'ADMIN';
-    const isResponsible = user?.role === 'RESPONSIBLE';
+    const isRESPONSABLE = user?.role === 'RESPONSABLE';
     const isEncargado = user?.role === 'ENCARGADO';
 
     const hasPermission = (roles: UserRole[]) => {
@@ -82,8 +101,11 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         return roles.includes(user.role);
     };
 
-    const checkPermission = (code: string) => {
+    const checkPermission = (code: string | string[]) => {
         if (isAdmin) return true; // Power user
+        if (Array.isArray(code)) {
+            return code.some(c => user?.permissions?.includes(c));
+        }
         return user?.permissions?.includes(code) || false;
     };
 
@@ -92,7 +114,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
             user,
             loading,
             isAdmin,
-            isResponsible,
+            isRESPONSABLE,
             isEncargado,
             hasPermission,
             checkPermission,

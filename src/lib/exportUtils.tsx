@@ -14,7 +14,7 @@ Font.register({
 
 const pdfStyles = StyleSheet.create({
     page: {
-        padding: 30, // Slightly reduced padding
+        padding: 30,
         fontFamily: 'Almarai',
         backgroundColor: '#ffffff',
     },
@@ -29,12 +29,7 @@ const pdfStyles = StyleSheet.create({
     },
     companyInfo: {
         flexDirection: 'column',
-        alignItems: 'flex-end', // Align to right for Arabic
-    },
-    companyName: {
-        fontSize: 14,
-        fontFamily: 'AlmaraiBold',
-        color: '#1e293b',
+        alignItems: 'flex-end',
     },
     reportTitleContainer: {
         alignItems: 'center',
@@ -73,8 +68,6 @@ const pdfStyles = StyleSheet.create({
     },
     tableRow: {
         flexDirection: 'row-reverse',
-        borderBottomWidth: 1,
-        borderBottomColor: '#f1f5f9',
         minHeight: 22,
         alignItems: 'center',
     },
@@ -85,7 +78,7 @@ const pdfStyles = StyleSheet.create({
         color: '#1e293b',
         fontSize: 9,
         fontFamily: 'AlmaraiBold',
-        textAlign: 'right',
+        textAlign: 'center',
     },
     tableCellText: {
         fontSize: 8,
@@ -107,6 +100,7 @@ const pdfStyles = StyleSheet.create({
     footerText: {
         fontSize: 7,
         color: '#94a3b8',
+        textAlign: 'center',
     }
 });
 
@@ -115,83 +109,126 @@ const MyPdfDocument = ({
     subtitle,
     headers,
     data,
+    sections,
     orientation = 'landscape',
-    columnStyles = {}
+    columnStyles = {},
+    columnFlexes = {},
+    columnAligns = {},
+    filename
 }: {
-    title: string,
+    title?: string,
     subtitle?: string,
-    headers: string[],
-    data: any[][],
+    headers?: string[],
+    data?: any[][],
+    sections?: {
+        title: string,
+        subtitle?: string,
+        headers: string[],
+        data: any[][]
+    }[],
     orientation?: 'portrait' | 'landscape',
-    columnStyles?: Record<number, string>
+    columnStyles?: Record<number, string>,
+    columnFlexes?: Record<number, number>,
+    columnAligns?: Record<number, 'left' | 'center' | 'right'>,
+    filename?: string
 }) => {
-    const today = new Date().toLocaleString('ar-EG', {
+    const today = new Date().toLocaleString('ar-AR', {
         year: 'numeric', month: 'long', day: 'numeric',
         hour: '2-digit', minute: '2-digit'
     });
 
-    return (
-        <Document>
-            <Page size="A4" orientation={orientation} style={pdfStyles.page}>
-                {/* Professional Header */}
-                <View style={pdfStyles.header}>
-                    <View style={pdfStyles.companyInfo}>
-                        <Text style={pdfStyles.companyName}>نظام العائلة المحاسبي</Text>
-                        <Text style={pdfStyles.metaInfo}>تاريخ التقرير: {today}</Text>
-                    </View>
-                    <View style={pdfStyles.reportTitleContainer}>
-                        <Text style={pdfStyles.reportTitle}>{title}</Text>
-                        {subtitle && <Text style={pdfStyles.reportSubtitle}>{subtitle}</Text>}
-                    </View>
+    const renderPage = (pTitle: string, pSubtitle: string | undefined, pHeaders: string[], pData: any[][], keyPrefix: string) => (
+        <Page key={keyPrefix} size={orientation === 'landscape' ? [841.89, 595.28] : "A4"} style={pdfStyles.page}>
+            <View style={pdfStyles.header}>
+                <View style={pdfStyles.companyInfo}>
+                    <Text style={pdfStyles.metaInfo}>تاريخ التقرير: {today}</Text>
                 </View>
+                <View style={pdfStyles.reportTitleContainer}>
+                    <Text style={pdfStyles.reportTitle}>{pTitle}</Text>
+                    {pSubtitle && <Text style={pdfStyles.reportSubtitle}>{pSubtitle}</Text>}
+                </View>
+            </View>
 
-                {/* Table Container */}
-                <View style={pdfStyles.table}>
-                    {/* Header Row */}
-                    <View style={pdfStyles.tableHeader} fixed>
-                        {headers.map((header, i) => (
-                            <View key={i} style={[
-                                pdfStyles.tableCol,
-                                { flex: i === 0 ? 3 : i === headers.length - 1 ? 2 : 1 },
-                                columnStyles[i] ? { backgroundColor: columnStyles[i] } : {}
-                            ]}>
-                                <Text style={pdfStyles.tableHeaderText}>{header}</Text>
-                            </View>
-                        ))}
-                    </View>
-                    {/* Rows */}
-                    {data.map((row, i) => (
+            <View style={pdfStyles.table}>
+                <View style={pdfStyles.tableHeader} fixed>
+                    {pHeaders.map((header, i) => (
                         <View key={i} style={[
-                            pdfStyles.tableRow,
-                            i % 2 === 0 ? {} : { backgroundColor: '#f9fafb' }
-                        ]} wrap={false}>
-                            {row.map((cell, j) => {
-                                const isObject = cell !== null && typeof cell === 'object' && cell.text !== undefined;
-                                const cellText = isObject ? cell.text : String(cell ?? '');
-                                const cellBg = isObject ? cell.bgColor : (columnStyles[j] && cell !== '-' && cell !== '---' && cell !== null && cell !== undefined ? columnStyles[j] : null);
-
-                                return (
-                                    <View key={j} style={[
-                                        pdfStyles.tableCol,
-                                        { flex: j === 0 ? 3 : j === headers.length - 1 ? 2 : 1 },
-                                        cellBg ? { backgroundColor: cellBg } : {}
-                                    ]}>
-                                        <Text style={pdfStyles.tableCellText}>{cellText}</Text>
-                                    </View>
-                                );
-                            })}
+                            pdfStyles.tableCol,
+                            { flex: columnFlexes[i] || (i === 0 ? 3 : i === pHeaders.length - 1 ? 2 : 1) },
+                            columnStyles[i] ? { backgroundColor: columnStyles[i] } : {}
+                        ]}>
+                            <Text style={[pdfStyles.tableHeaderText, columnAligns[i] ? { textAlign: columnAligns[i] } : {}]}>{header}</Text>
                         </View>
                     ))}
                 </View>
+                {pData.map((row: any, i) => {
+                    const rowStyle = row._rowStyle || {};
+                    const firstCell = row[0];
+                    const firstText = (firstCell && typeof firstCell === 'object') ? (firstCell.text || '') : String(firstCell || '');
+                    const isSummaryRow = firstText.includes('إجمالي') || firstText.includes('المجموع') || !!row._rowStyle;
+                    const rowBgColor = rowStyle.bgColor || (isSummaryRow ? '' : (i % 2 === 0 ? '' : '#f9fafb'));
+                    const rowFont = (isSummaryRow ? 'AlmaraiBold' : 'Almarai');
 
-                {/* Footer */}
-                <View style={pdfStyles.footer} fixed>
-                    <Text style={pdfStyles.footerText}>تقرير مالي رسمي - بنظام العائلة المحاسبي</Text>
-                    <Text style={pdfStyles.footerText} render={({ pageNumber, totalPages }) => (
-                        `صفحة ${pageNumber} من ${totalPages}`
-                    )} />
-                </View>
-            </Page>
+                    return (
+                        <View key={i} style={[
+                            pdfStyles.tableRow,
+                            { backgroundColor: rowBgColor },
+                            !isSummaryRow
+                                ? { borderBottomWidth: 1, borderBottomColor: '#f1f5f9' }
+                                : { borderTopWidth: 1.5, borderTopColor: '#cbd5e1', borderBottomWidth: 1.5, borderBottomColor: '#cbd5e1' }
+                        ]} wrap={false}>
+                                {row.map((cell: any, j: number) => {
+                                    const isObject = cell !== null && typeof cell === 'object' && cell.text !== undefined;
+                                    const cellText = isObject ? cell.text : String(cell ?? '');
+                                    const cellBg = isObject ? cell.bgColor : (columnStyles[j] && cell !== '-' && cell !== '---' && cell !== null && cell !== undefined ? columnStyles[j] : null);
+                                    const colorBox = isObject ? cell.colorBox : null;
+                                    const isNameCol = j === 0;
+
+                                    return (
+                                        <View key={j} style={[
+                                            pdfStyles.tableCol,
+                                            { flex: columnFlexes[j] || (j === 0 ? 3 : j === pHeaders.length - 1 ? 2 : 1) },
+                                            cellBg ? { backgroundColor: cellBg } : {}
+                                        ]}>
+                                            <View style={{ 
+                                                flexDirection: 'row-reverse', 
+                                                alignItems: 'center', 
+                                                justifyContent: isNameCol ? 'flex-start' : 'center'
+                                            }}>
+                                                {colorBox && (
+                                                    <View style={{ width: 7, height: 7, backgroundColor: colorBox, marginLeft: 4, borderRadius: 1, borderStyle: 'solid', borderWidth: 0.5, borderColor: '#1e293b' }} />
+                                                )}
+                                                <Text style={[
+                                                    pdfStyles.tableCellText,
+                                                    isNameCol ? {} : { textAlign: 'center' },
+                                                    columnAligns[j] ? { textAlign: columnAligns[j] } : {},
+                                                    { fontFamily: rowFont, fontSize: isSummaryRow ? 9 : 10 }
+                                                ]}>{cellText}</Text>
+                                            </View>
+                                        </View>
+                                    );
+                                })}
+                        </View>
+                    );
+                })}
+            </View>
+
+            <View style={pdfStyles.footer} fixed>
+                <Text style={pdfStyles.footerText}>تقرير مالي رسمي - بنظام العائلة المحاسبي</Text>
+                <Text style={pdfStyles.footerText} render={({ pageNumber, totalPages }) => (
+                    `صفحة ${pageNumber} من ${totalPages}`
+                )} />
+            </View>
+        </Page>
+    );
+
+    return (
+        <Document title={filename}>
+            {sections ? (
+                sections.map((s, idx) => renderPage(s.title, s.subtitle, s.headers, s.data, `section-${idx}`))
+            ) : (
+                data && headers && title && renderPage(title, subtitle, headers, data, 'single-page')
+            )}
         </Document>
     );
 };
@@ -220,7 +257,16 @@ export const exportToPDF = async (
     subtitle?: string,
     summary?: any,
     orientation: 'portrait' | 'landscape' = 'landscape',
-    columnStyles: Record<number, string> = {}
+    columnStyles: Record<number, string> = {},
+    columnFlexes: Record<number, number> = {},
+    columnAligns: Record<number, 'left' | 'center' | 'right'> = {},
+    sections?: {
+        title: string,
+        subtitle?: string,
+        headers: string[],
+        keys: string[],
+        data: any[]
+    }[]
 ) => {
     const translations: Record<string, string> = {
         'ASSET': 'أصول',
@@ -233,15 +279,32 @@ export const exportToPDF = async (
         'Summary': 'الملخص'
     };
 
-    const tableData = data.map(item => keys.map(k => {
-        const val = item[k];
-        return (typeof val === 'string' && translations[val]) ? translations[val] : val;
-    }));
+    const processDataRows = (rows: any[], kList: string[]) => rows.map(item => {
+        const rowData: any = kList.map(k => {
+            const val = item[k];
+            return (typeof val === 'string' && translations[val]) ? translations[val] : val;
+        });
+        if (item._rowStyle) {
+            rowData._rowStyle = item._rowStyle;
+        }
+        return rowData;
+    });
 
-    // If summary is provided, add it as a final row
+    let pdfSections;
+    if (sections) {
+        pdfSections = sections.map(s => ({
+            title: s.title,
+            subtitle: s.subtitle,
+            headers: s.headers,
+            data: processDataRows(s.data, s.keys)
+        }));
+    }
+
+    const tableData = processDataRows(data, keys);
+
     if (summary) {
         const summaryRow = keys.map((k, idx) => {
-            if (idx === 0) return 'الإجمالي';
+            if (idx === 0) return 'إجمالي العام';
             return summary[k] !== undefined ? summary[k] : '';
         });
         tableData.push(summaryRow);
@@ -253,11 +316,21 @@ export const exportToPDF = async (
             subtitle={subtitle}
             headers={headers}
             data={tableData}
+            sections={pdfSections}
             orientation={orientation}
             columnStyles={columnStyles}
+            columnFlexes={columnFlexes}
+            columnAligns={columnAligns}
+            filename={filename}
         />
     ).toBlob();
 
     const url = URL.createObjectURL(blob);
-    window.open(url, '_blank');
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${filename.replace(/\s+/g, '_')}.pdf`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
 };

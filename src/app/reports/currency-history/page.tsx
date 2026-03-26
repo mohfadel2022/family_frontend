@@ -1,23 +1,16 @@
 "use client";
 
 import React, { useState, useEffect } from 'react';
-import {
-    History,
-    Calendar,
-    FileDown,
-    Printer,
-    ArrowLeftRight,
-    Loader2,
-    Search,
-    Filter,
-    ArrowUpDown,
-    Coins
-} from 'lucide-react';
+import { APP_ICONS } from '@/lib/icons';
 import axios from 'axios';
 import { cn } from '@/lib/utils';
+import { usePageTheme } from '@/hooks/usePageTheme';
 import { toast } from 'sonner';
+import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
+import { WithPermission } from '@/components/auth/WithPermission';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Button } from '@/components/ui/button';
+import { CustomButton } from '@/components/ui/CustomButton';
 import { Input } from '@/components/ui/input';
 import {
     Select,
@@ -27,13 +20,83 @@ import {
     SelectValue,
 } from '@/components/ui/select';
 import { exportToPDF, exportToExcel } from '@/lib/exportUtils';
+import { DataTable } from '@/components/ui/data-table';
+import { ColumnDef } from '@tanstack/react-table';
+import { ActionModal } from '@/components/ui/ActionModal';
+import { ConfirmModal } from '@/components/ui/ConfirmModal';
+import { useAuth } from '@/context/AuthContext';
 
 import { META_BASE, getAuthHeader } from '@/lib/api';
 
 const API_BASE = META_BASE;
-const AUTH_HEADER = getAuthHeader();
+
+// --- Subcomponent: Edit Modal ---
+const EditHistoryModal = ({ history, onClose, onSave }: any) => {
+    const theme = usePageTheme();
+    const [rate, setRate] = useState(history?.rate || '');
+    const [date, setDate] = useState(history?.date ? new Date(history.date).toISOString().split('T')[0] : '');
+    const [loading, setLoading] = useState(false);
+
+    const handleSave = async () => {
+        setLoading(true);
+        try {
+            await axios.put(`${API_BASE}/currencies/history/${history.id}`, { rate, date }, getAuthHeader());
+            toast.success('تم تحديث السعر بنجاح');
+            onSave();
+            onClose();
+        } catch (err: any) {
+            toast.error(err.response?.data?.error || 'فشل التحديث');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    return (
+        <ActionModal
+            isOpen={true}
+            onClose={onClose}
+            title="تعديل سجل العملة"
+            description="قم بتعديل سعر الصرف أو التاريخ لهذا السجل."
+            icon={APP_ICONS.ACTIONS.EDIT}
+        >
+            <div className="space-y-5">
+                <div className="space-y-2">
+                    <label className="text-xs font-black text-muted-foreground uppercase mr-1">سعر الصرف</label>
+                    <Input 
+                        type="number" 
+                        step="0.0001"
+                        value={rate} 
+                        onChange={(e) => setRate(e.target.value)} 
+                        className="h-12 rounded-2xl font-black"
+                    />
+                </div>
+                <div className="space-y-2">
+                    <label className="text-xs font-black text-muted-foreground uppercase mr-1">التاريخ</label>
+                    <Input 
+                        type="date" 
+                        value={date} 
+                        onChange={(e) => setDate(e.target.value)} 
+                        className="h-12 rounded-2xl font-black"
+                    />
+                </div>
+                <div className="flex gap-3 pt-2">
+                    <CustomButton variant="outline" onClick={onClose} className="flex-1 h-12">إلغاء</CustomButton>
+                    <CustomButton 
+                        variant="primary" 
+                        onClick={handleSave} 
+                        isLoading={loading}
+                        className="flex-[2] h-12"
+                    >
+                        حفظ التعديلات
+                    </CustomButton>
+                </div>
+            </div>
+        </ActionModal>
+    );
+};
 
 const CurrencyHistoryReport = () => {
+    const theme = usePageTheme();
     const [currencies, setCurrencies] = useState<any[]>([]);
     const [selectedCurrency, setSelectedCurrency] = useState<string>('');
     const [history, setHistory] = useState<any[]>([]);
@@ -43,10 +106,17 @@ const CurrencyHistoryReport = () => {
     const [startDate, setStartDate] = useState('');
     const [endDate, setEndDate] = useState('');
 
+    const [editingRecord, setEditingRecord] = useState<any>(null);
+    const [deletingId, setDeletingId] = useState<string | null>(null);
+    const [isDeleting, setIsDeleting] = useState(false);
+
+    const { checkPermission } = useAuth();
+    const canEdit = checkPermission('CURRENCIES_EDIT');
+
     useEffect(() => {
         const fetchCurrencies = async () => {
             try {
-                const res = await axios.get(`${API_BASE}/currencies`, AUTH_HEADER);
+                const res = await axios.get(`${API_BASE}/currencies`, getAuthHeader());
                 const foreignOnly = res.data.filter((c: any) => !c.isBase);
                 setCurrencies(foreignOnly);
                 if (foreignOnly.length > 0) {
@@ -65,7 +135,7 @@ const CurrencyHistoryReport = () => {
         if (!selectedCurrency) return;
         setLoading(true);
         try {
-            const res = await axios.get(`${API_BASE}/currencies/${selectedCurrency}/history`, AUTH_HEADER);
+            const res = await axios.get(`${API_BASE}/currencies/${selectedCurrency}/history`, getAuthHeader());
             let filtered = res.data;
 
             if (startDate) {
@@ -91,46 +161,92 @@ const CurrencyHistoryReport = () => {
         }
     }, [selectedCurrency]);
 
-    const handleExportPDF = () => {
-        const curr = currencies.find(c => c.id === selectedCurrency);
-        const exportData = history.map(h => ({
-            date: new Date(h.date).toLocaleDateString('ar-DZ'),
-            rate: Number(h.rate).toLocaleString(undefined, { minimumFractionDigits: 4 }),
-            regDate: new Date(h.createdAt).toLocaleString('ar-DZ')
-        }));
+    const columns = React.useMemo<ColumnDef<any>[]>(() => [
+        {
+            accessorKey: 'date',
+            header: 'تاريخ السعر',
+            cell: ({ row }) => (
+                <div className="flex items-center gap-3">
+                    <div className={cn("w-10 h-10 bg-card rounded-xl border border-border flex items-center justify-center shadow-sm group-hover:scale-110 transition-transform", theme.accent)}>
+                        <APP_ICONS.ACTIONS.CALENDAR size={18} />
+                    </div>
+                    <span className="font-mono font-black text-foreground/80">{new Date(row.original.date).toLocaleDateString('ar-AR')}</span>
+                </div>
+            )
+        },
+        {
+            accessorKey: 'rate',
+            header: 'سعر الصرف',
+            cell: ({ row }) => (
+                <span className={cn("font-mono font-black text-lg", theme.accent.replace('-700', '-900'))}>
+                    {Number(row.original.rate).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                </span>
+            )
+        },
+        {
+            accessorKey: 'createdAt',
+            header: 'تاريخ الإضافة للنظام',
+            cell: ({ row }) => (
+                <span className="text-muted-foreground/60 font-bold text-sm tracking-tight capitalize">
+                    {new Date(row.original.createdAt).toLocaleString('ar-DZ')}
+                </span>
+            )
+        },
+        {
+            id: 'diff',
+            header: 'الفرق',
+            cell: ({ row, table }) => {
+                const index = row.index;
+                const data = table.options.data;
+                const prevItem = data[index + 1];
+                const diff = prevItem ? Number(row.original.rate) - Number(prevItem.rate) : 0;
 
-        exportToPDF(
-            exportData,
-            `Currency_History_${curr?.code}`,
-            `تقرير سجل أسعار الصرف - ${curr?.name} (${curr?.code})`,
-            ['التاريخ', 'سعر الصرف', 'تاريخ التسجيل'],
-            ['date', 'rate', 'regDate'],
-            `الفترة: ${startDate || 'الكل'} إلى ${endDate || 'الآن'}`,
-            {}
-        );
-    };
-
-    const handleExportExcel = () => {
-        const curr = currencies.find(c => c.id === selectedCurrency);
-        const exportData = history.map(h => ({
-            'التاريخ': new Date(h.date).toLocaleDateString('ar-DZ'),
-            'سعر الصرف': Number(h.rate),
-            'تاريخ التسجيل': new Date(h.createdAt).toLocaleString('ar-DZ')
-        }));
-
-        exportToExcel(
-            exportData,
-            `Currency_History_${curr?.code}`,
-            ['التاريخ', 'سعر الصرف', 'تاريخ التسجيل'],
-            ['التاريخ', 'سعر الصرف', 'تاريخ التسجيل']
-        );
-    };
+                if (diff === 0) return <span className="text-muted-foreground/40 font-bold text-[10px]">—</span>;
+                return diff > 0 ? (
+                    <span className="bg-emerald-50 text-emerald-600 px-3 py-1 rounded-full text-[10px] font-black">
+                        +{diff.toFixed(2)} ↑
+                    </span>
+                ) : (
+                    <span className="bg-rose-50 text-rose-600 px-3 py-1 rounded-full text-[10px] font-black">
+                        {diff.toFixed(2)} ↓
+                    </span>
+                );
+            }
+        },
+        {
+            id: 'actions',
+            header: 'إجراءات',
+            cell: ({ row }) => {
+                if (!canEdit) return null;
+                return (
+                    <div className="flex items-center gap-2">
+                        <CustomButton
+                            size="icon"
+                            variant="ghost"
+                            onClick={() => setEditingRecord(row.original)}
+                            className="w-8 h-8 text-blue-600 hover:bg-blue-50"
+                        >
+                            <APP_ICONS.ACTIONS.EDIT size={14} />
+                        </CustomButton>
+                        <CustomButton
+                            size="icon"
+                            variant="ghost"
+                            onClick={() => setDeletingId(row.original.id)}
+                            className="w-8 h-8 text-rose-600 hover:bg-rose-50"
+                        >
+                            <APP_ICONS.ACTIONS.DELETE size={14} />
+                        </CustomButton>
+                    </div>
+                );
+            }
+        }
+    ], [theme.accent, canEdit]);
 
     if (fetchingCurrencies) {
         return (
             <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4">
-                <Loader2 className="w-12 h-12 text-blue-600 animate-spin" />
-                <p className="text-slate-500 font-black">جاري تحميل البيانات...</p>
+                <APP_ICONS.STATE.LOADING className={cn("w-12 h-12 animate-spin", theme.accent)} />
+                <p className="text-muted-foreground/80 font-black">جاري تحميل البيانات...</p>
             </div>
         );
     }
@@ -138,188 +254,137 @@ const CurrencyHistoryReport = () => {
     const currentCurrency = currencies.find(c => c.id === selectedCurrency);
 
     return (
-        <div className="max-w-6xl mx-auto space-y-8 animate-in fade-in duration-700">
-            {/* Header */}
-            <PageHeader
-                icon={History}
-                title="تقرير سجل العملات"
-                description="Currency Exchange Rate History Analysis"
-                iconClassName="bg-gradient-to-br from-indigo-600 to-blue-700 shadow-blue-200"
-            >
-                <div className="flex gap-3">
-                    <Button
-                        variant="outline"
-                        onClick={handleExportExcel}
-                        className="h-12 px-6 rounded-2xl border-slate-200 hover:bg-emerald-50 hover:text-emerald-600 hover:border-emerald-100 transition-all font-black flex gap-2"
-                        disabled={history.length === 0}
-                    >
-                        <FileDown size={18} />
-                        تصدير Excel
-                    </Button>
-                    <Button
-                        onClick={handleExportPDF}
-                        className="h-12 px-6 rounded-2xl bg-slate-900 text-white hover:bg-black transition-all shadow-lg shadow-slate-200 font-black flex gap-2"
-                        disabled={history.length === 0}
-                    >
-                        <Printer size={18} />
-                        طباعة PDF
-                    </Button>
-                </div>
-            </PageHeader>
+        <ProtectedRoute permission="REPORTS_CURRENCY_HISTORY_VIEW">
+            <div className="max-w-6xl mx-auto space-y-8 animate-in fade-in duration-700">
+                {/* Header */}
+                <PageHeader
+                    icon={APP_ICONS.REPORTS.CURRENCY_HISTORY}
+                    title="تقرير سجل العملات"
+                    description="Currency Exchange Rate History Analysis"
+                />
 
-            {/* Filters */}
-            <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-xl shadow-slate-200/50">
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-6 items-end">
-                    <div className="space-y-2">
-                        <label className="text-xs font-black text-slate-500 uppercase tracking-widest mr-1">العملة</label>
-                        <Select value={selectedCurrency} onValueChange={setSelectedCurrency}>
-                            <SelectTrigger className="h-12 rounded-2xl bg-slate-50 border-slate-100 font-bold text-right" dir="rtl">
-                                <SelectValue placeholder="اختر العملة" />
-                            </SelectTrigger>
-                            <SelectContent dir="rtl">
-                                {currencies.map(c => (
-                                    <SelectItem key={c.id} value={c.id}>
-                                        <div className="flex items-center gap-2">
-                                            <span className="text-blue-600 font-black">{c.code}</span>
-                                            <span>{c.name}</span>
-                                        </div>
-                                    </SelectItem>
-                                ))}
-                                {currencies.length === 0 && <SelectItem value="none" disabled>لا توجد عملات أجنبية</SelectItem>}
-                            </SelectContent>
-                        </Select>
-                    </div>
+                {/* Filters */}
+                <div className="bg-card p-8 rounded-[2.5rem] border border-border shadow-xl shadow-slate-900/5">
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-6 items-end">
+                        <div className="space-y-2">
+                            <label className="text-xs font-black text-muted-foreground/80 uppercase tracking-widest mr-1">العملة</label>
+                            <Select value={selectedCurrency} onValueChange={setSelectedCurrency}>
+                                <SelectTrigger className="h-12 rounded-2xl bg-muted/50 border-border font-bold text-right" dir="rtl">
+                                    <SelectValue placeholder="اختر العملة" />
+                                </SelectTrigger>
+                                <SelectContent dir="rtl">
+                                    {currencies.map(c => (
+                                        <SelectItem key={c.id} value={c.id}>
+                                            <div className="flex items-center gap-2">
+                                                <span className={cn("font-black", theme.accent)}>{c.code}</span>
+                                                <span>{c.name}</span>
+                                            </div>
+                                        </SelectItem>
+                                    ))}
+                                    {currencies.length === 0 && <SelectItem value="none" disabled>لا توجد عملات أجنبية</SelectItem>}
+                                </SelectContent>
+                            </Select>
+                        </div>
 
-                    <div className="space-y-2">
-                        <label className="text-xs font-black text-slate-500 uppercase tracking-widest mr-1">من تاريخ</label>
-                        <div className="relative">
-                            <Calendar className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-                            <Input
-                                type="date"
-                                value={startDate}
-                                onChange={(e) => setStartDate(e.target.value)}
-                                className="h-12 pr-11 rounded-2xl bg-slate-50 border-slate-100 font-bold"
-                            />
-                        </div>
-                    </div>
-
-                    <div className="space-y-2">
-                        <label className="text-xs font-black text-slate-500 uppercase tracking-widest mr-1">إلى تاريخ</label>
-                        <div className="relative">
-                            <Calendar className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-                            <Input
-                                type="date"
-                                value={endDate}
-                                onChange={(e) => setEndDate(e.target.value)}
-                                className="h-12 pr-11 rounded-2xl bg-slate-50 border-slate-100 font-bold"
-                            />
-                        </div>
-                    </div>
-
-                    <Button
-                        onClick={fetchHistory}
-                        className="h-12 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white font-black shadow-lg shadow-blue-100 transition-all flex gap-2"
-                    >
-                        <Search size={18} />
-                        تحديث البيانات
-                    </Button>
-                </div>
-            </div>
-
-            {/* Data Table */}
-            <div className="bg-white rounded-[2.5rem] border border-slate-100 shadow-xl shadow-slate-200/50 overflow-hidden">
-                <div className="p-8 border-b border-slate-50 bg-slate-50/50 flex justify-between items-center">
-                    <div className="flex items-center gap-4">
-                        <div className="p-3 bg-blue-100 rounded-2xl text-blue-600">
-                            <ArrowUpDown size={22} />
-                        </div>
-                        <div>
-                            <h2 className="text-lg font-black text-slate-800">تفاصيل التحركات</h2>
-                            <p className="text-xs text-slate-400 font-bold uppercase tracking-tighter">Historical Exchange Rate Movements</p>
-                        </div>
-                    </div>
-                    {currentCurrency && (
-                        <div className="flex items-center gap-3 bg-white px-5 py-2 rounded-2xl border border-slate-100 shadow-sm">
-                            <Coins className="text-emerald-500" size={18} />
-                            <span className="text-slate-800 font-black text-sm">{currentCurrency.name}</span>
-                            <span className="bg-emerald-50 text-emerald-600 px-2.5 py-0.5 rounded-lg text-[10px] font-black">{currentCurrency.code}</span>
-                        </div>
-                    )}
-                </div>
-
-                <div className="p-8">
-                    {loading ? (
-                        <div className="py-20 flex flex-col items-center gap-4">
-                            <Loader2 size={40} className="animate-spin text-blue-600" />
-                            <p className="text-slate-400 font-black animate-pulse">جاري سحب السجلات...</p>
-                        </div>
-                    ) : history.length === 0 ? (
-                        <div className="py-24 text-center">
-                            <div className="bg-slate-50 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6">
-                                <Search className="text-slate-300" size={32} />
+                        <div className="space-y-2">
+                            <label className="text-xs font-black text-muted-foreground/80 uppercase tracking-widest mr-1">من تاريخ</label>
+                            <div className="relative">
+                                <APP_ICONS.ACTIONS.CALENDAR className="absolute right-4 top-1/2 -translate-y-1/2 text-muted-foreground/60" size={16} />
+                                <Input
+                                    type="date"
+                                    value={startDate}
+                                    onChange={(e) => setStartDate(e.target.value)}
+                                    className={cn("h-12 pr-11 rounded-2xl bg-muted/50 border-border font-bold focus-visible:ring-2", theme.accent.replace('text-', 'focus-visible:ring-'))}
+                                />
                             </div>
-                            <h3 className="text-slate-800 font-black text-lg mb-2">لا توجد سجلات</h3>
-                            <p className="text-slate-400 font-bold text-sm">لم يتم العثور على أي تغييرات في السعر ضمن الفترة المحددة</p>
                         </div>
-                    ) : (
-                        <div className="border border-slate-100 rounded-[2rem] overflow-hidden shadow-sm">
-                            <table className="w-full text-right">
-                                <thead>
-                                    <tr className="bg-slate-50/80 border-b border-slate-100">
-                                        <th className="p-5 text-xs font-black text-slate-500 uppercase tracking-widest">تاريخ السعر</th>
-                                        <th className="p-5 text-xs font-black text-slate-500 uppercase tracking-widest">سعر الصرف</th>
-                                        <th className="p-5 text-xs font-black text-slate-500 uppercase tracking-widest">تاريخ الإضافة للنظام</th>
-                                        <th className="p-5 text-xs font-black text-slate-500 uppercase tracking-widest text-center">الفرق</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-slate-50">
-                                    {history.map((item, index) => {
-                                        const prevItem = history[index + 1];
-                                        const diff = prevItem ? Number(item.rate) - Number(prevItem.rate) : 0;
 
-                                        return (
-                                            <tr key={item.id} className="hover:bg-blue-50/20 transition-all group">
-                                                <td className="p-5">
-                                                    <div className="flex items-center gap-3">
-                                                        <div className="w-10 h-10 bg-white rounded-xl border border-slate-100 flex items-center justify-center text-blue-600 shadow-sm group-hover:scale-110 transition-transform">
-                                                            <Calendar size={18} />
-                                                        </div>
-                                                        <span className="font-mono font-black text-slate-700">{new Date(item.date).toLocaleDateString('ar-DZ')}</span>
-                                                    </div>
-                                                </td>
-                                                <td className="p-5">
-                                                    <span className="text-blue-700 font-mono font-black text-lg">
-                                                        {Number(item.rate).toLocaleString(undefined, { minimumFractionDigits: 4 })}
-                                                    </span>
-                                                </td>
-                                                <td className="p-5">
-                                                    <span className="text-slate-400 font-bold text-sm tracking-tight capitalize">
-                                                        {new Date(item.createdAt).toLocaleString('ar-DZ')}
-                                                    </span>
-                                                </td>
-                                                <td className="p-5 text-center">
-                                                    {diff === 0 ? (
-                                                        <span className="text-slate-300 font-bold text-[10px]">—</span>
-                                                    ) : diff > 0 ? (
-                                                        <span className="bg-emerald-50 text-emerald-600 px-3 py-1 rounded-full text-[10px] font-black">
-                                                            +{diff.toFixed(4)} ↑
-                                                        </span>
-                                                    ) : (
-                                                        <span className="bg-rose-50 text-rose-600 px-3 py-1 rounded-full text-[10px] font-black">
-                                                            {diff.toFixed(4)} ↓
-                                                        </span>
-                                                    )}
-                                                </td>
-                                            </tr>
-                                        );
-                                    })}
-                                </tbody>
-                            </table>
+                        <div className="space-y-2">
+                            <label className="text-xs font-black text-muted-foreground/80 uppercase tracking-widest mr-1">إلى تاريخ</label>
+                            <div className="relative">
+                                <APP_ICONS.ACTIONS.CALENDAR className="absolute right-4 top-1/2 -translate-y-1/2 text-muted-foreground/60" size={16} />
+                                <Input
+                                    type="date"
+                                    value={endDate}
+                                    onChange={(e) => setEndDate(e.target.value)}
+                                    className={cn("h-12 pr-11 rounded-2xl bg-muted/50 border-border font-bold focus-visible:ring-2", theme.accent.replace('text-', 'focus-visible:ring-'))}
+                                />
+                            </div>
                         </div>
-                    )}
+
+                        <CustomButton
+                            onClick={fetchHistory}
+                            variant="primary"
+                            className="h-12"
+                        >
+                            <APP_ICONS.ACTIONS.SEARCH size={18} />
+                            تحديث البيانات
+                        </CustomButton>
+                    </div>
                 </div>
+
+                {/* Data Table */}
+                <div className="space-y-4">
+                    <div className="flex justify-between items-center px-4">
+                        <div className="flex items-center gap-4">
+                            <div className={cn("p-3 rounded-2xl", theme.muted, theme.accent)}>
+                                <APP_ICONS.ACTIONS.SORT size={22} />
+                            </div>
+                            <div>
+                                <h2 className="text-lg font-black text-foreground/90">تفاصيل التحركات</h2>
+                                <p className="text-xs text-muted-foreground/60 font-bold uppercase tracking-tighter">Historical Exchange Rate Movements</p>
+                            </div>
+                        </div>
+                        {currentCurrency && (
+                            <div className={cn("flex items-center gap-3 bg-card px-5 py-2 rounded-2xl border shadow-sm", theme.border)}>
+                                <APP_ICONS.MODULES.CURRENCIES className="text-emerald-500" size={18} />
+                                <span className="text-foreground/90 font-black text-sm">{currentCurrency.name}</span>
+                                <span className={cn("px-2.5 py-0.5 rounded-lg text-[10px] font-black", theme.muted, theme.accent)}>{currentCurrency.code}</span>
+                            </div>
+                        )}
+                    </div>
+
+                    <DataTable
+                        columns={columns}
+                        data={history}
+                        loading={loading}
+                        searchPlaceholder="بحث في السجلات..."
+                        exportFileName={`Currency_History_${currentCurrency?.code || 'Export'}`}
+                        noDataMessage="لم يتم العثور على أي تغييرات في السعر ضمن الفترة المحددة"
+                    />
+                </div>
+
+                {editingRecord && (
+                    <EditHistoryModal 
+                        history={editingRecord} 
+                        onClose={() => setEditingRecord(null)} 
+                        onSave={fetchHistory} 
+                    />
+                )}
+
+                <ConfirmModal
+                    open={!!deletingId}
+                    onOpenChange={(open) => !open && setDeletingId(null)}
+                    onConfirm={async () => {
+                        if (!deletingId) return;
+                        setIsDeleting(true);
+                        try {
+                            await axios.delete(`${API_BASE}/currencies/history/${deletingId}`, getAuthHeader());
+                            toast.success('تم حذف السجل بنجاح');
+                            fetchHistory();
+                        } catch (err) {
+                            toast.error('فشل الحذف');
+                        } finally {
+                            setIsDeleting(false);
+                            setDeletingId(null);
+                        }
+                    }}
+                    title="حذف سجل السعر"
+                    description="هل أنت متأكد من حذف هذا السجل التاريخي؟ سيؤثر ذلك على تقارير الأرباح/الخسائر الناتجة عن فروق الأسعار."
+                    loading={isDeleting}
+                />
             </div>
-        </div>
+        </ProtectedRoute>
     );
 };
 

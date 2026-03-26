@@ -70,10 +70,31 @@ export const AttachmentUpload = ({ attachments, onChange, label = "المرفق�
         }
     };
 
-    const removeAttachment = (index: number) => {
-        const newAttachments = [...attachments];
-        newAttachments.splice(index, 1);
-        onChange(newAttachments);
+    const removeAttachment = async (index: number) => {
+        const attachment = attachments[index];
+
+        try {
+            if (attachment.id) {
+                // If it has an ID, it's already in the database
+                await axios.delete(`${API_BASE}/${attachment.id}`, getAuthHeader());
+            } else {
+                // If it doesn't have an ID, it was just uploaded and not yet linked
+                await axios.post(`${API_BASE}/delete-binary`, { fileUrl: attachment.fileUrl }, getAuthHeader());
+            }
+
+            const newAttachments = [...attachments];
+            newAttachments.splice(index, 1);
+            onChange(newAttachments);
+            toast.success('تم حذف المرفق بنجاح');
+        } catch (error) {
+            console.error('Error removing attachment:', error);
+            toast.error('فشل حذف المرفق من الخادم');
+            // Still remove from UI even if server call fails, or keep it?
+            // Usually safer to keep it or handle it based on error
+            const newAttachments = [...attachments];
+            newAttachments.splice(index, 1);
+            onChange(newAttachments);
+        }
     };
 
     const getFileIcon = (type?: string) => {
@@ -86,7 +107,7 @@ export const AttachmentUpload = ({ attachments, onChange, label = "المرفق�
     return (
         <div className="space-y-4">
             <div className="flex items-center justify-between">
-                <label className="text-sm font-black text-slate-700 flex items-center gap-2">
+                <label className="text-sm font-black text-foreground/80 flex items-center gap-2">
                     <Paperclip size={18} className="text-blue-600" />
                     {label}
                 </label>
@@ -103,7 +124,7 @@ export const AttachmentUpload = ({ attachments, onChange, label = "المرفق�
                             type="button"
                             variant="outline"
                             size="sm"
-                            className="h-9 px-4 rounded-xl border-dashed border-slate-200 hover:border-blue-300 hover:bg-blue-50 text-slate-500 font-bold gap-2"
+                            className="h-9 px-4 rounded-xl border-dashed border-input hover:border-blue-300 hover:bg-blue-50 text-muted-foreground/80 font-bold gap-2"
                             onClick={() => document.getElementById('file-upload')?.click()}
                             disabled={uploading}
                         >
@@ -119,15 +140,15 @@ export const AttachmentUpload = ({ attachments, onChange, label = "المرفق�
                     {attachments.map((file, idx) => {
                         const Icon = getFileIcon(file.fileType);
                         return (
-                            <div key={idx} className="group relative flex items-center gap-3 p-3 rounded-2xl bg-slate-50 border border-slate-100 hover:border-blue-200 transition-all">
-                                <div className="w-10 h-10 rounded-xl bg-white flex items-center justify-center text-blue-500 shadow-sm">
+                            <div key={idx} className="group relative flex items-center gap-3 p-3 rounded-2xl bg-muted/50 border border-border hover:border-blue-200 transition-all">
+                                <div className="w-10 h-10 rounded-xl bg-card flex items-center justify-center text-blue-500 shadow-sm">
                                     <Icon size={20} />
                                 </div>
                                 <div className="flex-1 min-w-0">
-                                    <p className="text-xs font-black text-slate-800 truncate" title={file.fileName}>
+                                    <p className="text-xs font-black text-foreground/90 truncate" title={file.fileName}>
                                         {file.fileName}
                                     </p>
-                                    <p className="text-[10px] text-slate-400 font-bold">
+                                    <p className="text-[10px] text-muted-foreground/60 font-bold">
                                         {(file.fileSize ? (file.fileSize / 1024).toFixed(1) : 0)} KB
                                     </p>
                                 </div>
@@ -136,7 +157,7 @@ export const AttachmentUpload = ({ attachments, onChange, label = "المرفق�
                                         href={`${API_URL.replace('/api', '')}${file.fileUrl}`}
                                         target="_blank"
                                         rel="noopener noreferrer"
-                                        className="p-1.5 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-100 transition-all"
+                                        className="p-1.5 rounded-lg text-muted-foreground/60 hover:text-blue-600 hover:bg-blue-100 transition-all"
                                     >
                                         <FileText size={14} />
                                     </a>
@@ -144,7 +165,7 @@ export const AttachmentUpload = ({ attachments, onChange, label = "المرفق�
                                         <button
                                             type="button"
                                             onClick={() => removeAttachment(idx)}
-                                            className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-100 transition-all"
+                                            className="p-1.5 rounded-lg text-muted-foreground/60 hover:text-rose-600 hover:bg-rose-100 transition-all"
                                         >
                                             <X size={14} />
                                         </button>

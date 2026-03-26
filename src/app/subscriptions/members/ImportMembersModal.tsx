@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Upload, CheckCircle2, AlertCircle, Loader2, FileSpreadsheet, PlusCircle } from 'lucide-react';
@@ -8,7 +7,9 @@ import * as XLSX from 'xlsx';
 import axios from 'axios';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
-import { SUB_BASE, getAuthHeader } from '@/lib/api';
+import { ActionModal } from '@/components/ui/ActionModal';
+import { APP_ICONS } from '@/lib/icons';
+import { SUB_BASE, META_BASE, getAuthHeader } from '@/lib/api';
 
 const API_BASE = SUB_BASE;
 const AUTH_HEADER = getAuthHeader();
@@ -26,9 +27,29 @@ export const ImportMembersModal = ({ onClose, entities, onSuccess }: Props) => {
 
     const [unresolvedEntities, setUnresolvedEntities] = useState<string[]>([]);
     const [entityMapping, setEntityMapping] = useState<Record<string, string>>({});
+    const [defaultYear, setDefaultYear] = useState<number>(new Date().getFullYear());
 
     const [loading, setLoading] = useState(false);
     const [report, setReport] = useState<any>(null);
+
+    const [availableCurrencies, setAvailableCurrencies] = useState<any[]>([]);
+    const [availableBranches, setAvailableBranches] = useState<any[]>([]);
+
+    React.useEffect(() => {
+        const fetchMeta = async () => {
+            try {
+                const [curRes, braRes] = await Promise.all([
+                    axios.get(`${META_BASE}/currencies`, AUTH_HEADER),
+                    axios.get(`${META_BASE}/branches`, AUTH_HEADER)
+                ]);
+                setAvailableCurrencies(curRes.data);
+                setAvailableBranches(braRes.data);
+            } catch (err) {
+                console.error('Error fetching meta for import:', err);
+            }
+        };
+        fetchMeta();
+    }, []);
 
     const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
@@ -106,10 +127,13 @@ export const ImportMembersModal = ({ onClose, entities, onSuccess }: Props) => {
 
     const handleCreateEntity = async (entityNameStr: string) => {
         try {
-            // Pick the first branch id we can find from existing entities to create a default one
-            const defaultBranch = entities[0]?.branchId;
-            const defaultCurrency = entities[0]?.currencyId;
-            if (!defaultBranch || !defaultCurrency) throw new Error('لا توجد إعدادات افتراضية لإنشاء جهة');
+            const defaultBranch = entities[0]?.branchId || availableBranches.find(b => b.code !== 'FAKE_CODE')?.id || availableBranches[0]?.id;
+            const defaultCurrency = entities[0]?.currencyId || availableCurrencies.find(c => c.isBase)?.id || availableCurrencies[0]?.id;
+
+            if (!defaultBranch || !defaultCurrency) {
+                toast.error('لا يمكن إنشاء جهة بدون إعدادات الفروع والعملات. يرجى مراجعة إعدادات النظام أولاً.');
+                return false;
+            }
 
             const res = await axios.post(`${API_BASE}/entities`, {
                 name: entityNameStr === 'بدون جهة' ? 'جهة جديدة (مجهولة)' : entityNameStr,
@@ -121,16 +145,27 @@ export const ImportMembersModal = ({ onClose, entities, onSuccess }: Props) => {
 
             toast.success(`تم إنشاء الجهة الجديدة: ${res.data.name}`);
 
-            // Add to mapping
             setEntityMapping(prev => ({ ...prev, [entityNameStr]: res.data.id }));
-
-            // Update entity list internally if needed or assume mapping works
             entities.push(res.data);
-
             setUnresolvedEntities(prev => prev.filter(e => e !== entityNameStr));
-
+            return true;
         } catch (err: any) {
             toast.error(err.response?.data?.error || 'فشل إنشاء الجهة');
+            return false;
+        }
+    };
+
+    const handleCreateAllEntities = async () => {
+        setLoading(true);
+        let successCount = 0;
+        const unmapped = unresolvedEntities.filter(e => !entityMapping[e]);
+        for (const unres of unmapped) {
+            const success = await handleCreateEntity(unres);
+            if (success) successCount++;
+        }
+        setLoading(false);
+        if (successCount > 0) {
+            toast.success(`تم إنشاء ${successCount} جهة تلقائياً`);
         }
     };
 
@@ -154,7 +189,8 @@ export const ImportMembersModal = ({ onClose, entities, onSuccess }: Props) => {
         try {
             const res = await axios.post(`${API_BASE}/members/import`, {
                 filename: fileName,
-                rows: finalRows
+                rows: finalRows,
+                defaultYear: defaultYear
             }, AUTH_HEADER);
 
             setReport(res.data);
@@ -169,141 +205,210 @@ export const ImportMembersModal = ({ onClose, entities, onSuccess }: Props) => {
     };
 
     return (
-        <Dialog open={true} onOpenChange={(open) => !open && onClose()}>
-            <DialogContent className="max-w-xl bg-white p-0 overflow-hidden border-slate-100 rounded-[2.5rem]" dir="rtl">
-                <DialogHeader className="p-8 bg-gradient-to-br from-indigo-50 to-white border-b border-indigo-100">
-                    <DialogTitle className="text-2xl font-black text-slate-900 flex items-center gap-3">
-                        <FileSpreadsheet className="text-indigo-600" />
-                        استيراد أعضاء من Excel
-                    </DialogTitle>
-                    <p className="text-slate-500 font-medium text-sm mt-2">
-                        {step === 1 && "قم برفع ملف Excel أو CSV يحتوي على بيانات الأعضاء"}
-                        {step === 2 && "مراجعة وربط الجهات غير المعرفة"}
-                        {step === 3 && "تقرير نهاية عملية الاستيراد"}
-                    </p>
-                </DialogHeader>
-
-                <div className="p-8">
+            <ActionModal
+                isOpen={true}
+                onClose={onClose}
+                title="استيراد أعضاء من Excel"
+                description={
+                    step === 1 ? "قم برفع ملف Excel أو CSV يحتوي على بيانات الأعضاء" :
+                    step === 2 ? "مراجعة وربط الجهات غير المعرفة" :
+                    "تقرير نهاية عملية الاستيراد"
+                }
+                icon={APP_ICONS.ACTIONS.IMPORT}
+                iconClassName="bg-indigo-600 text-white shadow-indigo-100"
+                maxWidth="max-w-xl"
+                preventClose={true}
+                showCloseButton={false}
+            >
+                <div>
                     {step === 1 && (
-                        <div className="flex flex-col items-center justify-center border-2 border-dashed border-slate-200 rounded-3xl p-12 bg-slate-50 relative hover:bg-slate-100 hover:border-indigo-400 transition-all">
-                            {loading ? (
-                                <Loader2 size={40} className="text-indigo-600 animate-spin mb-4" />
-                            ) : (
-                                <Upload size={40} className="text-slate-400 mb-4" />
-                            )}
-                            <h3 className="font-bold text-slate-700 text-lg mb-2">اضغط لاختيار ملف</h3>
-                            <p className="text-slate-400 text-sm">يقبل صيغ .xlsx و .csv</p>
-                            <input
-                                type="file"
-                                accept=".xlsx, .xls, .csv"
-                                className="absolute inset-0 opacity-0 cursor-pointer"
-                                onChange={handleFileUpload}
-                                disabled={loading}
-                            />
+                        <div className="space-y-6">
+                            <div className="flex flex-col items-center justify-center border-2 border-dashed border-input rounded-[2rem] p-12 bg-muted/30 relative hover:bg-indigo-50/30 hover:border-indigo-200 transition-all cursor-pointer group">
+                                {loading ? (
+                                    <Loader2 size={40} className="text-indigo-600 animate-spin mb-4" />
+                                ) : (
+                                    <APP_ICONS.ACTIONS.IMPORT size={40} className="text-muted-foreground/40 group-hover:scale-110 transition-transform mb-4" />
+                                )}
+                                <h3 className="font-black text-foreground/80 text-lg mb-2">اضغط لاختيار ملف</h3>
+                                <p className="text-muted-foreground/60 text-sm font-bold">يقبل صيغ .xlsx و .csv</p>
+                                <input
+                                    type="file"
+                                    accept=".xlsx, .xls, .csv"
+                                    className="absolute inset-0 opacity-0 cursor-pointer"
+                                    onChange={handleFileUpload}
+                                    disabled={loading}
+                                />
+                            </div>
+
+                            <div className="bg-card p-6 rounded-[2rem] border border-border/50 shadow-sm space-y-3">
+                                <label className="text-sm font-black text-foreground/70 flex items-center gap-2 px-1">
+                                    <FileSpreadsheet size={16} className="text-indigo-600" />
+                                    سنة الانتساب الافتراضية
+                                </label>
+                                <Input
+                                    type="number"
+                                    value={defaultYear}
+                                    onChange={(e) => setDefaultYear(Number(e.target.value))}
+                                    className="h-12 bg-muted/30 font-black rounded-xl border-none text-center text-lg focus-visible:ring-indigo-500"
+                                    placeholder="مثال: 2024"
+                                />
+                                <p className="text-[10px] text-muted-foreground font-bold px-1 leading-relaxed">
+                                    هذه السنة ستستخدم في حال لم يتم تحديد "سنة الانتساب" في ملف Excel لكل عضو.
+                                </p>
+                            </div>
                         </div>
                     )}
 
                     {step === 2 && (
                         <div className="space-y-6">
-                            <div className="bg-blue-50 text-blue-800 p-4 rounded-2xl text-sm font-bold flex items-start gap-3">
-                                <AlertCircle size={20} className="shrink-0 mt-0.5" />
+                            <div className="bg-blue-50/50 text-blue-800 p-5 rounded-2xl border border-blue-100/50 text-sm font-bold flex items-start gap-4 shadow-sm">
+                                <div className="w-10 h-10 rounded-xl bg-blue-100 flex items-center justify-center text-blue-600 shrink-0">
+                                    <AlertCircle size={20} />
+                                </div>
                                 <div>
-                                    <p>تم قراءة {parsedData.length} سجل بنجاح.</p>
-                                    <p className="font-medium text-blue-600 mt-1">يجب مطابقة الجهات الموجودة في الملف مع جهات مسجلة في النظام.</p>
+                                    <p className="text-blue-900 mb-1">تم قراءة {parsedData.length} سجل بنجاح.</p>
+                                    <p className="font-medium text-blue-600/80">يجب مطابقة الجهات الموجودة في الملف مع جهات مسجلة في النظام.</p>
                                 </div>
                             </div>
 
                             {unresolvedEntities.length > 0 ? (
-                                <div className="space-y-4 max-h-[40vh] overflow-y-auto pr-2">
-                                    {unresolvedEntities.map(unres => (
-                                        <div key={unres} className="flex flex-col gap-2 p-4 bg-slate-50 rounded-2xl border border-slate-100">
-                                            <div className="font-bold text-slate-800 break-words line-clamp-2">الجهة في الملف: <span className="text-indigo-600">"{unres}"</span></div>
-                                            <div className="flex gap-2 w-full">
-                                                <div className="flex-1">
-                                                    <Select value={entityMapping[unres] || ''} onValueChange={v => setEntityMapping(p => ({ ...p, [unres]: v }))}>
-                                                        <SelectTrigger className="w-full h-11 bg-white font-bold" dir="rtl">
-                                                            <SelectValue placeholder="اختر جهة للربط..." />
-                                                        </SelectTrigger>
-                                                        <SelectContent dir="rtl">
-                                                            {entities.map(e => <SelectItem key={e.id} value={e.id}>{e.name}</SelectItem>)}
-                                                        </SelectContent>
-                                                    </Select>
-                                                </div>
-                                                <Button
-                                                    variant="outline"
-                                                    className="h-11 border-indigo-200 text-indigo-700 hover:bg-indigo-50 font-bold shrink-0"
-                                                    onClick={() => handleCreateEntity(unres)}
-                                                >
-                                                    <PlusCircle size={16} className="mr-2" /> جديد
-                                                </Button>
-                                            </div>
+                                <div className="space-y-4">
+                                    <div className="flex justify-between items-center px-1">
+                                        <div className="flex flex-col">
+                                            <p className="text-sm font-black text-foreground/80">الجهات غير المعرفة</p>
+                                            <p className="text-xs text-muted-foreground font-bold">عدد الجهات: {unresolvedEntities.length}</p>
                                         </div>
-                                    ))}
+                                        <Button
+                                            size="sm"
+                                            variant="outline"
+                                            onClick={handleCreateAllEntities}
+                                            className="h-9 text-indigo-600 border-indigo-100 hover:bg-indigo-600 hover:text-white font-black text-xs rounded-xl shadow-sm transition-all"
+                                        >
+                                            <PlusCircle size={14} className="ml-2" />
+                                            إنشاء الكل تلقائياً
+                                        </Button>
+                                    </div>
+                                    <div className="space-y-3 max-h-[40vh] overflow-y-auto pr-1 custom-scrollbar">
+                                        {unresolvedEntities.map(unres => (
+                                            <div key={unres} className="flex flex-col gap-3 p-5 bg-muted/20 rounded-2xl border border-border/50 hover:border-indigo-100 transition-colors">
+                                                <div className="font-black text-foreground/90 text-sm break-words flex items-center gap-2">
+                                                    <div className="w-1.5 h-6 bg-indigo-500 rounded-full" />
+                                                    الجهة في الملف: <span className="text-indigo-600">"{unres}"</span>
+                                                </div>
+                                                <div className="flex gap-2 w-full">
+                                                    <div className="flex-1">
+                                                        <Select value={entityMapping[unres] || ''} onValueChange={v => setEntityMapping(p => ({ ...p, [unres]: v }))}>
+                                                            <SelectTrigger className="w-full h-12 bg-card font-bold rounded-xl border-border/50 shadow-sm" dir="rtl">
+                                                                <SelectValue placeholder="اختر جهة للربط..." />
+                                                            </SelectTrigger>
+                                                            <SelectContent dir="rtl" className="rounded-xl shadow-xl border-border/50">
+                                                                {entities.map(e => (
+                                                                    <SelectItem key={e.id} value={e.id} className="font-bold py-3 focus:bg-indigo-50 focus:text-indigo-600 rounded-lg mx-1">
+                                                                        {e.name}
+                                                                    </SelectItem>
+                                                                ))}
+                                                            </SelectContent>
+                                                        </Select>
+                                                    </div>
+                                                    <Button
+                                                        variant="outline"
+                                                        className="h-12 w-12 border-indigo-100 text-indigo-700 hover:bg-indigo-600 hover:text-white font-black rounded-xl shadow-sm flex items-center justify-center p-0 shrink-0 transition-all"
+                                                        title="إنشاء جهة جديدة"
+                                                        onClick={() => handleCreateEntity(unres)}
+                                                    >
+                                                        <PlusCircle size={20} />
+                                                    </Button>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
                                 </div>
                             ) : (
-                                <div className="flex flex-col items-center p-8 bg-emerald-50 rounded-2xl text-emerald-700">
-                                    <CheckCircle2 size={40} className="mb-4" />
-                                    <h3 className="font-black text-lg">جميع الجهات مطابقة!</h3>
-                                    <p className="font-medium mt-1">يمكنك الآن بدء عملية الاستيراد الفعلي للسجلات.</p>
+                                <div className="flex flex-col items-center py-12 px-8 bg-emerald-50/30 rounded-[2rem] border border-emerald-100/50 text-emerald-700 shadow-sm">
+                                    <div className="w-20 h-20 rounded-3xl bg-emerald-100 flex items-center justify-center text-emerald-600 mb-6 shadow-emerald-100/50 shadow-lg">
+                                        <CheckCircle2 size={40} />
+                                    </div>
+                                    <h3 className="font-black text-2xl mb-2">جميع الجهات مطابقة!</h3>
+                                    <p className="font-bold text-emerald-600/70 text-center">يمكنك الآن بدء عملية الاستيراد الفعلي للسجلات بنقرة واحدة.</p>
                                 </div>
                             )}
-
-                            <div className="pt-4 flex gap-3">
-                                <Button variant="ghost" onClick={onClose} className="flex-1 h-12 rounded-xl font-bold">إلغاء</Button>
-                                <Button
-                                    onClick={handleImport}
-                                    disabled={loading || unresolvedEntities.some(e => !entityMapping[e])}
-                                    className="flex-[2] h-12 bg-indigo-600 hover:bg-indigo-700 text-white font-black rounded-xl"
-                                >
-                                    {loading ? <Loader2 size={18} className="animate-spin" /> : 'بدء الاستيراد'}
-                                </Button>
-                            </div>
                         </div>
                     )}
 
                     {step === 3 && report && (
                         <div className="space-y-6">
-                            <div className="grid grid-cols-2 gap-4">
-                                <div className="bg-emerald-50 p-6 rounded-2xl border border-emerald-100 text-center">
-                                    <div className="text-3xl font-black text-emerald-600 mb-1">{report.importedCount}</div>
-                                    <div className="text-emerald-800 font-bold text-sm">تم استيراده بنجاح</div>
+                            <div className="grid grid-cols-2 gap-5">
+                                <div className="bg-emerald-50/50 p-8 rounded-[2rem] border border-emerald-100/50 text-center shadow-sm group hover:bg-emerald-50 transition-colors">
+                                    <div className="text-4xl font-black text-emerald-600 mb-2 group-hover:scale-110 transition-transform">{report.importedCount}</div>
+                                    <div className="text-emerald-800 font-black text-xs uppercase tracking-wider">تم استيراده بنجاح</div>
                                 </div>
-                                <div className="bg-rose-50 p-6 rounded-2xl border border-rose-100 text-center">
-                                    <div className="text-3xl font-black text-rose-600 mb-1">{report.errorsCount}</div>
-                                    <div className="text-rose-800 font-bold text-sm">أخطاء غير مستوردة</div>
+                                <div className="bg-rose-50/50 p-8 rounded-[2rem] border border-rose-100/50 text-center shadow-sm group hover:bg-rose-50 transition-colors">
+                                    <div className="text-4xl font-black text-rose-600 mb-2 group-hover:scale-110 transition-transform">{report.errorsCount}</div>
+                                    <div className="text-rose-800 font-black text-xs uppercase tracking-wider">أخطاء غير مستوردة</div>
                                 </div>
                             </div>
 
                             {report.errorsDetails && report.errorsDetails.length > 0 && (
-                                <div className="border border-rose-100 rounded-2xl max-h-48 overflow-y-auto bg-white">
-                                    <table className="w-full text-sm text-right">
-                                        <thead className="bg-rose-50 text-rose-800 font-bold sticky top-0">
-                                            <tr>
-                                                <th className="p-3 border-b border-rose-100">سطر</th>
-                                                <th className="p-3 border-b border-rose-100">الاسم</th>
-                                                <th className="p-3 border-b border-rose-100">الخطأ</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody className="divide-y divide-rose-50 font-medium text-slate-700">
-                                            {report.errorsDetails.map((err: any, idx: number) => (
-                                                <tr key={idx}>
-                                                    <td className="p-3">{err.row}</td>
-                                                    <td className="p-3 text-rose-600">{err.name || 'مجهول'}</td>
-                                                    <td className="p-3">{err.error}</td>
+                                <div className="border border-rose-100/50 rounded-[2rem] max-h-56 overflow-hidden bg-card shadow-sm">
+                                    <div className="p-4 bg-rose-50 border-b border-rose-100/50 text-rose-800 font-black text-sm flex items-center gap-2">
+                                        <AlertCircle size={16} />
+                                        تفاصيل الأخطاء المكتشفة
+                                    </div>
+                                    <div className="overflow-y-auto max-h-44 custom-scrollbar">
+                                        <table className="w-full text-sm text-right">
+                                            <thead className="bg-muted/30 text-muted-foreground font-black sticky top-0 backdrop-blur-md">
+                                                <tr>
+                                                    <th className="p-4 border-b border-border/50">سطر</th>
+                                                    <th className="p-4 border-b border-border/50">الاسم</th>
+                                                    <th className="p-4 border-b border-border/50">الخطأ</th>
                                                 </tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
+                                            </thead>
+                                            <tbody className="divide-y divide-border/30 font-bold text-foreground/80">
+                                                {report.errorsDetails.map((err: any, idx: number) => (
+                                                    <tr key={idx} className="hover:bg-rose-50/20 transition-colors">
+                                                        <td className="p-4">{err.row}</td>
+                                                        <td className="p-4 text-indigo-600">{err.name || 'مجهول'}</td>
+                                                        <td className="p-4 text-rose-600/80">{err.error}</td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
                                 </div>
                             )}
-
-                            <Button onClick={onClose} className="w-full h-12 bg-slate-900 hover:bg-black text-white font-black rounded-xl">
-                                إغلاق النافذة
-                            </Button>
                         </div>
                     )}
                 </div>
-            </DialogContent>
-        </Dialog>
+
+                <div className="flex gap-3 justify-end mt-8 border-t border-border/50 pt-6">
+                    {step === 1 ? (
+                        <Button variant="ghost" onClick={onClose} className="h-12 px-8 rounded-xl font-black text-muted-foreground hover:bg-muted hover:text-foreground transition-all">
+                            إلغاء
+                        </Button>
+                    ) : step === 2 ? (
+                        <>
+                            <Button variant="ghost" onClick={() => setStep(1)} className="h-12 px-8 rounded-xl font-black text-muted-foreground hover:bg-muted hover:text-foreground transition-all">
+                                سابق
+                            </Button>
+                            <Button
+                                onClick={handleImport}
+                                disabled={loading || unresolvedEntities.some(e => !entityMapping[e])}
+                                className="h-12 px-10 bg-indigo-600 hover:bg-indigo-700 text-white font-black rounded-xl shadow-lg shadow-indigo-100 transition-all flex items-center gap-2"
+                            >
+                                {loading ? <Loader2 size={18} className="animate-spin" /> : (
+                                    <>
+                                        <CheckCircle2 size={18} />
+                                        بدء الاستيراد الفعلي
+                                    </>
+                                )}
+                            </Button>
+                        </>
+                    ) : (
+                        <Button onClick={onClose} className="h-12 w-full bg-slate-900 hover:bg-black text-white font-black rounded-[1.25rem] shadow-lg shadow-slate-100 transition-all">
+                            إغلاق التقرير و العودة
+                        </Button>
+                    )}
+                </div>
+            </ActionModal>
     );
 };

@@ -1,30 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from 'react';
-import {
-    Plus,
-    Trash2,
-    Check,
-    AlertCircle,
-    RefreshCw,
-    Loader2,
-    List,
-    FilePlus2,
-    Edit3,
-    Calendar,
-    ArrowLeftRight,
-    Search,
-    Filter,
-    ChevronLeft,
-    ChevronDown,
-    Printer,
-    Download,
-    Building2,
-    FileText,
-    RotateCcw,
-    Eye,
-    Paperclip
-} from 'lucide-react';
+import { APP_ICONS } from '@/lib/icons';
 import { cn } from '@/lib/utils';
 import axios from 'axios';
 import { toast } from 'sonner';
@@ -40,11 +17,6 @@ import {
     SelectValue,
 } from '@/components/ui/select';
 import {
-    Tooltip,
-    TooltipContent,
-    TooltipTrigger,
-} from '@/components/ui/tooltip';
-import {
     Table,
     TableBody,
     TableCell,
@@ -59,19 +31,21 @@ import { useSearchParams } from 'next/navigation';
 import { Suspense } from 'react';
 
 import { SearchableAccountSelect } from '@/components/SearchableAccountSelect';
-import { AccountModal } from '@/components/AccountModal';
-import { ConfirmationDialog } from '@/components/ui/ConfirmationDialog';
+import { ActionModal } from '@/components/ui/ActionModal';
+import { AccountForm } from '@/components/forms/AccountForm';
+import { ConfirmModal } from '@/components/ui/ConfirmModal';
 import { AttachmentUpload } from '@/components/AttachmentUpload';
 import { ViewAttachmentsModal } from '@/components/ViewAttachmentsModal';
-import { PermissionGuard } from '@/components/ui/PermissionGuard';
+import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
+import { WithPermission } from '@/components/auth/WithPermission';
 import { useAuth } from '@/context/AuthContext';
 import { API_BASE, getAuthHeader } from '@/lib/api';
-
-// Remove local API_BASE and getAuthHeader, now using imports from @/lib/api
+import { CustomButton } from '@/components/ui/CustomButton';
+import { usePageTheme } from '@/hooks/usePageTheme';
 
 interface JournalLine {
-    id?: string; // Generated on client or came from server
-    tempId: string; // Internal state ID
+    id?: string;
+    tempId: string;
     accountId: string;
     currencyId: string;
     currencyCode: string;
@@ -83,18 +57,16 @@ interface JournalLine {
 }
 
 const JournalPage = () => {
+    const theme = usePageTheme();
     const { checkPermission } = useAuth();
-    const canView = checkPermission('VOUCHERS_VIEW');
-    const canCreate = checkPermission('VOUCHERS_CREATE');
-    const canEdit = checkPermission('VOUCHERS_EDIT');
-    const canDelete = checkPermission('VOUCHERS_DELETE');
-    const canExport = checkPermission('VOUCHERS_EXPORT');
+    const canView = checkPermission('JOURNAL_VIEW');
 
     const [view, setView] = useState<'list' | 'form'>('list');
     const [entries, setEntries] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [editingId, setEditingId] = useState<string | null>(null);
     const [isViewOnly, setIsViewOnly] = useState(false);
+    const [status, setStatus] = useState<string | null>(null);
 
     // Form State
     const [description, setDescription] = useState('');
@@ -107,7 +79,7 @@ const JournalPage = () => {
     const [branches, setBranches] = useState<any[]>([]);
     const [saving, setSaving] = useState(false);
     const [currencies, setCurrencies] = useState<any[]>([]);
-    const [isAccountModalOpen, setIsAccountModalOpen] = useState(false);
+    const [isActionModalOpen, seIsActionModalOpen] = useState(false);
 
     // Attachment Viewer State
     const [viewAttachmentsEntry, setViewAttachmentsEntry] = useState<any>(null);
@@ -130,19 +102,19 @@ const JournalPage = () => {
     });
     const [isActionLoading, setIsActionLoading] = useState(false);
 
-    // Only leaf accounts (those without children) can be used in journal lines
     const leafAccounts = accounts.filter(a => !accounts.some(b => b.parentId === a.id));
 
     const searchParams = useSearchParams();
     const entryId = searchParams.get('id');
 
     useEffect(() => {
+        if (!canView) return;
         fetchMeta();
         fetchEntries();
         if (entryId) {
             fetchEntryById(entryId);
         }
-    }, [entryId]);
+    }, [entryId, canView]);
 
     const fetchEntryById = async (id: string) => {
         try {
@@ -192,6 +164,7 @@ const JournalPage = () => {
             { tempId: '2', accountId: '', currencyId: '', currencyCode: '---', debit: 0, credit: 0, exchangeRate: 1, baseDebit: 0, baseCredit: 0 },
         ]);
         setAttachments([]);
+        setStatus(null);
     };
 
     const fetchRate = async (currencyId: string, targetDate: string) => {
@@ -220,7 +193,6 @@ const JournalPage = () => {
         setLines(newLines);
     };
 
-    // Refresh rates when date changes
     useEffect(() => {
         if (view === 'form' && !isViewOnly && lines.some(l => l.currencyId)) {
             refreshRates(date);
@@ -236,6 +208,7 @@ const JournalPage = () => {
     const handleEdit = async (entry: any, viewOnly: boolean = false) => {
         setIsViewOnly(viewOnly);
         setEditingId(entry.id);
+        setStatus(entry.status);
         setDescription(entry.description || '');
         setDate(new Date(entry.date).toISOString().split('T')[0]);
         setBranchId(entry.branchId || '');
@@ -373,10 +346,12 @@ const JournalPage = () => {
                 try {
                     await axios.post(`${API_BASE}/journals/${id}/unpost`, {}, getAuthHeader());
                     toast.success('تم إلغاء ترحيل القيد بنجاح', {
-                        description: 'القيد متوفر الآن في قائمة المسودات للتعديل.'
+                        description: 'يمكنك الآن تعديل القيد مباشرة.'
                     });
                     fetchEntries();
                     setConfirmDialog(prev => ({ ...prev, open: false }));
+                    setIsViewOnly(false);
+                    setStatus('DRAFT');
                 } catch (err: any) {
                     toast.error(err.response?.data?.error || 'فشل في إلغاء الترحيل');
                 } finally {
@@ -430,7 +405,7 @@ const JournalPage = () => {
                 `قيد يومية رقم: ${entry.entryNumber}`,
                 ['الحساب', 'مدين', 'دائن', 'العملة', 'سعر الصرف'],
                 ['account', 'debit', 'credit', 'currency', 'exchangeRate'],
-                `التاريخ: ${new Date(entry.date).toLocaleDateString('ar-DZ')} | الوصف: ${entry.description}`,
+                `التاريخ: ${new Date(entry.date).toLocaleDateString('ar-AR')} | الوصف: ${entry.description}`,
                 {
                     debit: totalDebit.toLocaleString(undefined, { minimumFractionDigits: 2 }),
                     credit: totalCredit.toLocaleString(undefined, { minimumFractionDigits: 2 })
@@ -447,40 +422,37 @@ const JournalPage = () => {
     const columns = React.useMemo<ColumnDef<any>[]>(
         () => [
             {
-                accessorKey: 'entryNumber',
-                header: 'رقم القيد',
-                cell: ({ row }) => (
-                    <div className="bg-blue-50 w-fit px-3 py-1 rounded-lg text-xs font-black text-blue-600">
-                        {row.original.entryNumber}
-                    </div>
-                ),
+                id: 'reference',
+                header: 'المرجع / الرقم',
+                cell: ({ row }) => {
+                    const entry = row.original;
+                    const count = entry.attachments?.length || 0;
+                    return (
+                        <div className="flex items-center gap-2">
+                            <div className={cn("px-2 py-0.5 rounded-md text-[10px] font-black", theme.muted, theme.accent)}>
+                                {entry.entryNumber}
+                            </div>
+                            {count > 0 && (
+                                <button
+                                    onClick={(e) => { e.stopPropagation(); setViewAttachmentsEntry(entry); }}
+                                    className={cn("flex items-center gap-1 p-1 rounded-md transition-all opacity-60 hover:opacity-100", theme.accent, theme.muted.replace('bg-', 'hover:bg-'))}
+                                    title={`${count} مرفق(ات) - انقر للعرض`}
+                                >
+                                    <APP_ICONS.ACTIONS.ATTACHMENT size={12} />
+                                </button>
+                            )}
+                        </div>
+                    );
+                },
             },
             {
                 accessorKey: 'date',
                 header: 'التاريخ',
                 cell: ({ row }) => (
-                    <span className="font-mono text-slate-500 text-sm">
-                        {new Date(row.original.date).toLocaleDateString('ar-DZ')}
+                    <span className="font-mono text-muted-foreground/80">
+                        {new Date(row.original.date).toLocaleDateString('ar-AR')}
                     </span>
                 ),
-            },
-            {
-                id: 'attachments',
-                header: '',
-                cell: ({ row }) => {
-                    const count = row.original.attachments?.length || 0;
-                    if (count === 0) return null;
-                    return (
-                        <button
-                            onClick={(e) => { e.stopPropagation(); setViewAttachmentsEntry(row.original); }}
-                            className="flex items-center gap-1 text-slate-400 hover:text-blue-600 hover:bg-blue-50 p-1.5 rounded-lg transition-all"
-                            title={`${count} مرفق(ات) - انقر للعرض`}
-                        >
-                            <Paperclip size={14} />
-                            <span className="text-[10px] font-bold">{count}</span>
-                        </button>
-                    );
-                }
             },
             {
                 id: 'amounts',
@@ -495,28 +467,28 @@ const JournalPage = () => {
                             {foreignLine ? (
                                 <>
                                     <div className="flex items-center gap-1.5">
-                                        <span className="font-black text-indigo-600 text-sm">
+                                        <span className={cn("font-black text-sm", theme.accent)}>
                                             {Number(foreignLine.debit || foreignLine.credit).toLocaleString(undefined, { minimumFractionDigits: 2 })}
                                         </span>
-                                        <span className="text-[10px] font-black text-slate-400 uppercase">
+                                        <span className="text-[10px] font-black text-muted-foreground/60 uppercase">
                                             {foreignLine.currency?.code}
                                         </span>
                                     </div>
                                     <div className="flex items-center gap-1.5 opacity-60">
-                                        <span className="font-bold text-slate-500 text-[11px]">
+                                        <span className="font-bold text-muted-foreground/80 text-[11px]">
                                             {Number(entry.totalAmount).toLocaleString(undefined, { minimumFractionDigits: 2 })}
                                         </span>
-                                        <span className="text-[9px] font-bold text-slate-400 uppercase">
+                                        <span className="text-[9px] font-bold text-muted-foreground/60 uppercase">
                                             {baseCurrency?.code}
                                         </span>
                                     </div>
                                 </>
                             ) : (
                                 <div className="flex items-center gap-1.5">
-                                    <span className="font-black text-slate-700 text-sm">
+                                    <span className="font-black text-foreground/80 text-sm">
                                         {Number(entry.totalAmount).toLocaleString(undefined, { minimumFractionDigits: 2 })}
                                     </span>
-                                    <span className="text-[10px] font-black text-slate-400 uppercase">
+                                    <span className="text-[10px] font-black text-muted-foreground/60 uppercase">
                                         {baseCurrency?.code}
                                     </span>
                                 </div>
@@ -529,26 +501,24 @@ const JournalPage = () => {
                 accessorKey: 'description',
                 header: 'البيان / الوصف',
                 cell: ({ row }) => (
-                    <span className="font-bold text-slate-800 line-clamp-1">{row.original.description}</span>
-                ),
-            },
-            {
-                accessorKey: 'branch.name',
-                header: 'الفرع',
-                cell: ({ row }) => (
-                    <span className="italic text-slate-500 font-medium">{row.original.branch?.name}</span>
+                    <div className="flex flex-col gap-0.5">
+                        <span className="font-bold text-foreground/90 line-clamp-1">{row.original.description}</span>
+                        {row.original.branch?.name && (
+                            <span className="text-[9px] italic text-muted-foreground/60 font-medium">{row.original.branch.name}</span>
+                        )}
+                    </div>
                 ),
             },
             {
                 accessorKey: 'status',
                 header: () => <div className="text-center w-full">الحالة</div>,
                 cell: ({ row }) => (
-                    <div className="text-center h-full flex items-center justify-center border-r border-slate-100 pr-4 -mr-4">
+                    <div className="text-center h-full flex items-center justify-center border-r border-border pr-2 -mr-2">
                         <span className={cn(
-                            "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-black uppercase tracking-widest",
-                            row.original.status === 'POSTED' ? "bg-emerald-100 text-emerald-600" : "bg-amber-100 text-amber-600 shadow-sm"
+                            "inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-[10px] font-black uppercase tracking-widest",
+                            row.original.status === 'POSTED' ? "bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400" : "bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400 shadow-sm"
                         )}>
-                            {row.original.status === 'POSTED' ? <Check size={12} /> : <div className="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></div>}
+                            {row.original.status === 'POSTED' ? <APP_ICONS.ACTIONS.CHECK size={10} /> : <div className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></div>}
                             {row.original.status === 'POSTED' ? 'رحّــــــــل' : 'مســــودة'}
                         </span>
                     </div>
@@ -559,420 +529,391 @@ const JournalPage = () => {
                 cell: ({ row }) => {
                     const entry = row.original;
                     return (
-                        <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-all">
-                            {/* View/Edit button - visible to all with VIEW, edit requires EDIT */}
+                        <div className="flex justify-end gap-1 opacity-0 group-hover:opacity-100 transition-all">
                             {entry.status === 'POSTED' ? (
                                 <Button
                                     size="icon"
                                     variant="ghost"
                                     onClick={() => handleEdit(entry, true)}
-                                    className="w-10 h-10 text-slate-600 hover:text-slate-700 hover:bg-slate-100 rounded-xl transition-all"
+                                    className="w-8 h-8 text-muted-foreground hover:text-foreground/80 hover:bg-accent dark:hover:bg-slate-800 rounded-xl transition-all"
                                     title="عرض فقط"
                                 >
-                                    <Eye size={18} />
-                                </Button>
-                            ) : canEdit ? (
-                                <Button
-                                    size="icon"
-                                    variant="ghost"
-                                    onClick={() => handleEdit(entry, false)}
-                                    className="w-10 h-10 text-blue-600 hover:text-blue-700 hover:bg-blue-100 rounded-xl transition-all"
-                                    title="تعديل"
-                                >
-                                    <Edit3 size={18} />
+                                    <APP_ICONS.ACTIONS.VIEW size={14} />
                                 </Button>
                             ) : (
-                                <Button
-                                    size="icon"
-                                    variant="ghost"
-                                    onClick={() => handleEdit(entry, true)}
-                                    className="w-10 h-10 text-slate-400 hover:text-slate-500 hover:bg-slate-100 rounded-xl transition-all"
-                                    title="عرض فقط (لا تملك صلاحية التعديل)"
-                                >
-                                    <Eye size={18} />
-                                </Button>
+                                <WithPermission permission="JOURNAL_EDIT">
+                                    <Button
+                                        size="icon"
+                                        variant="ghost"
+                                        onClick={() => handleEdit(entry, false)}
+                                        className="w-8 h-8 text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-900/30 rounded-xl transition-all"
+                                        title="تعديل"
+                                    >
+                                        <APP_ICONS.ACTIONS.EDIT size={14} />
+                                    </Button>
+                                </WithPermission>
                             )}
-
-                            {canExport && (
+ 
+                            <WithPermission permission="JOURNAL_PRINT">
                                 <Button
                                     size="icon"
                                     variant="ghost"
                                     onClick={() => handleExportSingle(entry)}
-                                    className="w-10 h-10 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 rounded-xl transition-all"
+                                    className="w-8 h-8 text-emerald-600 dark:text-emerald-400 hover:text-emerald-700 dark:hover:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-900/30 rounded-xl transition-all"
                                     title="تصدير PDF"
                                 >
-                                    <Download size={18} />
+                                    <APP_ICONS.ACTIONS.EXPORT size={14} />
                                 </Button>
-                            )}
-
-                            {canDelete && (
-                                entry.status === 'POSTED' ? (
+                            </WithPermission>
+ 
+                            {entry.status === 'POSTED' ? (
+                                <WithPermission permission="JOURNAL_UNPOST">
                                     <Button
                                         size="icon"
                                         variant="ghost"
                                         onClick={() => handleUnpost(entry.id)}
-                                        className="w-10 h-10 text-amber-600 hover:text-amber-700 hover:bg-amber-100 rounded-xl transition-all"
-                                        title="إلغاء الترحيل (مدير فقط)"
+                                        className="w-8 h-8 text-amber-600 dark:text-amber-400 hover:text-amber-700 dark:hover:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-900/30 rounded-xl transition-all"
+                                        title="إلغاء الترحيل"
                                     >
-                                        <RotateCcw size={18} />
+                                        <APP_ICONS.ACTIONS.UNDO size={14} />
                                     </Button>
-                                ) : (
+                                </WithPermission>
+                            ) : (
+                                <WithPermission permission="JOURNAL_DELETE">
                                     <Button
                                         size="icon"
                                         variant="ghost"
                                         onClick={() => handleDelete(entry.id)}
-                                        className="w-10 h-10 text-rose-500 hover:text-rose-600 hover:bg-rose-100 rounded-xl transition-all"
+                                        className="w-8 h-8 text-rose-500 dark:text-rose-400 hover:text-rose-600 dark:hover:text-rose-300 hover:bg-rose-100 dark:hover:bg-rose-900/30 rounded-xl transition-all"
                                         title="حذف"
                                     >
-                                        <Trash2 size={18} />
+                                        <APP_ICONS.ACTIONS.DELETE size={14} />
                                     </Button>
-                                )
+                                </WithPermission>
                             )}
                         </div>
                     );
                 },
             },
         ],
-        []
+        [theme, currencies]
     );
 
     if (loading && view === 'list') {
         return (
             <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4">
-                <Loader2 className="w-12 h-12 text-blue-600 animate-spin" />
-                <p className="text-slate-500 font-bold animate-pulse">جاري تحميل القيود اليومية...</p>
+                <APP_ICONS.STATE.LOADING className={cn("w-12 h-12 animate-spin", theme.accent)} />
+                <p className="text-muted-foreground/80 font-bold animate-pulse">جاري تحميل القيود اليومية...</p>
             </div>
         );
     }
 
     return (
-        <div className="max-w-7xl mx-auto space-y-8 animate-in fade-in duration-500">
-            {/* Header */}
-            <PageHeader
-                icon={view === 'list' ? List : FilePlus2}
-                title={view === 'list' ? 'دفتر اليومية العامة' : (editingId ? 'تعديل قيد يومية' : 'إنشاء قيد محاسبي')}
-                description={view === 'list' ? 'استعرض وقم بإدارة كافة الحركات المالية المسجلة' : 'سجل التفاصيل بدقة وتأكد من توازن القيد بالعملة الأساسية'}
-                iconClassName={view === 'list' ? "bg-gradient-to-br from-blue-600 to-indigo-700 shadow-blue-200" : "bg-gradient-to-br from-emerald-500 to-teal-600 shadow-emerald-200"}
-                className="mb-8"
-            >
-                {view === 'list' ? (
-                    canCreate && (
-                        <Button
-                            onClick={handleAddNew}
-                            className="bg-blue-600 hover:bg-blue-700  shadow-lg shadow-blue-200 hover:shadow-blue-300 transition-all hover:-translate-y-0.5"
-                            size="lg"
-                        >
-                            <Plus size={20} className="mr-2" />
-                            إضافة قيد جديد
-                        </Button>
-                    )
-                ) : (
-                    <div className="flex gap-2">
-                        {editingId && (
-                            <Button
-                                onClick={() => {
-                                    const entry = entries.find(e => e.id === editingId);
-                                    if (entry) handleExportSingle(entry);
-                                }}
-                                variant="outline"
-                                className="flex items-center gap-2 rounded-2xl font-bold border-emerald-200 text-emerald-600 hover:bg-emerald-50 transition-all"
-                                size="lg"
+        <ProtectedRoute permission="JOURNAL_VIEW">
+            <div className="max-w-7xl mx-auto space-y-8 animate-in fade-in duration-500">
+                <PageHeader
+                    icon={view === 'list' ? APP_ICONS.ACTIONS.LIST : APP_ICONS.MODULES.JOURNAL}
+                    title={view === 'list' ? 'دفتر اليومية العامة' : (isViewOnly ? 'تفاصيل قيد يومية' : (editingId ? 'تعديل قيد يومية' : 'إنشاء قيد محاسبي'))}
+                    description={view === 'list' ? 'استعرض وقم بإدارة كافة الحركات المالية المسجلة' : 'سجل التفاصيل بدقة وتأكد من توازن القيد بالعملة الأساسية'}
+                    className="mb-8"
+                >
+                    {view === 'list' ? (
+                        <WithPermission permission="JOURNAL_CREATE">
+                            <CustomButton
+                                onClick={handleAddNew}
+                                icon={APP_ICONS.ACTIONS.ADD}
+                                variant="primary"
+                                isLoading={false}
                             >
-                                <Download size={20} className="mr-2" />
-                                تصدير PDF
-                            </Button>
-                        )}
-                        <Button
-                            onClick={() => setView('list')}
-                            variant="outline"
-                            className="flex items-center gap-2 rounded-2xl font-bold transition-all"
-                            size="lg"
-                        >
-                            <ChevronLeft size={20} className="mr-2 rotate-180" />
-                            العودة للقائمة
-                        </Button>
-                    </div>
-                )}
-            </PageHeader>
-
-            {view === 'list' ? (
-                <div className="space-y-6">
-                    {/* Table */}
-                    <DataTable
-                        columns={columns}
-                        data={entries}
-                        headerClassName="bg-blue-600"
-                        searchPlaceholder="بحث برقم القيد أو الوصف..."
-                        exportFileName="journal-entries"
-                        noDataMessage={
-                            <div className="flex flex-col items-center gap-3">
-                                <IconBox icon={List} className="bg-slate-100 text-slate-400 group-hover:bg-blue-100 group-hover:text-blue-600 transition-colors" boxSize="w-16 h-16" iconSize={32} />
-                                <p className="text-slate-400 font-bold">لا توجد قيود مسجلة حالياً</p>
-                            </div>
-                        }
-                    />
-                </div>
-            ) : (
-                <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
-                    {/* Main Form */}
-                    <div className="lg:col-span-3 space-y-6">
-                        <div className="bg-white p-8 rounded-[2rem] border border-slate-200 shadow-2xl shadow-blue-500/5">
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-                                <div className="space-y-2">
-                                    <label className="flex items-center gap-2 text-sm font-black text-slate-700 mr-1">
-                                        <Building2 size={16} className="text-blue-500" />
-                                        الفرع المحاسبي
-                                    </label>
-                                    <Select disabled={isViewOnly} value={branchId} onValueChange={setBranchId}>
-                                        <SelectTrigger className="h-12 bg-slate-50/50 rounded-2xl" dir="rtl">
-                                            <SelectValue placeholder="اختر الفرع" />
-                                        </SelectTrigger>
-                                        <SelectContent dir="rtl">
-                                            {branches.map(b => <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>)}
-                                        </SelectContent>
-                                    </Select>
-                                </div>
-                                <div className="space-y-2">
-                                    <label className="flex items-center gap-2 text-sm font-black text-slate-700 mr-1">
-                                        <Calendar size={16} className="text-blue-500" />
-                                        تاريخ المعاملة
-                                    </label>
-                                    <Input
-                                        type="date"
-                                        disabled={isViewOnly}
-                                        value={date}
-                                        onChange={(e) => setDate(e.target.value)}
-                                        className="h-12 bg-slate-50/50 rounded-2xl font-mono font-bold"
-                                    />
-                                </div>
-                                <div className="space-y-2">
-                                    <label className="flex items-center gap-2 text-sm font-black text-slate-700 mr-1">
-                                        <FileText size={16} className="text-blue-500" />
-                                        وصف الحركة
-                                    </label>
-                                    <Input
-                                        type="text"
-                                        disabled={isViewOnly}
-                                        placeholder="مثال: فاتورة مبيعات رقم..."
-                                        value={description}
-                                        onChange={(e) => setDescription(e.target.value)}
-                                        className="h-12 bg-slate-50/50 rounded-2xl font-bold"
-                                    />
-                                </div>
-                            </div>
-
-                            <div className="overflow-x-auto -mx-8">
-                                <Table className="w-full text-right min-w-[800px]" dir="rtl">
-                                    <TableHeader>
-                                        <TableRow className="bg-blue-600 hover:bg-blue-700 border-none transition-all">
-                                            <TableHead className="py-4 px-8 font-black text-right text-white">الحساب</TableHead>
-                                            <TableHead className="py-4 px-2 font-black text-center w-32 text-white">مدين (+)</TableHead>
-                                            <TableHead className="py-4 px-2 font-black text-center w-32 text-white">دائن (-)</TableHead>
-                                            <TableHead className="py-4 px-2 font-black text-center w-24 text-white">العملة</TableHead>
-                                            <TableHead className="py-4 px-2 font-black text-center w-32 text-white">سعر الصرف</TableHead>
-                                            <TableHead className="py-4 px-8 w-10"></TableHead>
-                                        </TableRow>
-                                    </TableHeader>
-                                    <TableBody className="divide-y divide-slate-50">
-                                        {lines.map((line) => (
-                                            <TableRow key={line.tempId} className="group hover:bg-blue-50/20 transition-all border-b-slate-50">
-                                                <TableCell className="py-4 px-8">
-                                                    <SearchableAccountSelect
-                                                        disabled={isViewOnly}
-                                                        accounts={leafAccounts}
-                                                        value={line.accountId}
-                                                        onChange={(val: string) => updateLine(line.tempId, 'accountId', val)}
-                                                        onAddNew={() => setIsAccountModalOpen(true)}
-                                                    />
-                                                </TableCell>
-                                                <TableCell className="py-4 px-2">
-                                                    <Input
-                                                        type="number"
-                                                        disabled={isViewOnly}
-                                                        placeholder="0.00"
-                                                        className="w-full h-11 bg-slate-100/50 rounded-xl text-center font-mono font-bold focus:bg-white transition-colors border-0 focus-visible:ring-2 focus-visible:ring-blue-500"
-                                                        value={line.debit > 0 ? line.debit : ''}
-                                                        onChange={(e) => updateLine(line.tempId, 'debit', Number(e.target.value))}
-                                                    />
-                                                </TableCell>
-                                                <TableCell className="py-4 px-2">
-                                                    <Input
-                                                        type="number"
-                                                        disabled={isViewOnly}
-                                                        placeholder="0.00"
-                                                        className="w-full h-11 bg-slate-100/50 rounded-xl text-center font-mono font-bold focus:bg-white transition-colors border-0 focus-visible:ring-2 focus-visible:ring-blue-500"
-                                                        value={line.credit > 0 ? line.credit : ''}
-                                                        onChange={(e) => updateLine(line.tempId, 'credit', Number(e.target.value))}
-                                                    />
-                                                </TableCell>
-                                                <TableCell className="py-4 px-2 text-center">
-                                                    <div className="inline-flex h-10 w-16 items-center justify-center bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-tighter shadow-sm flex-shrink-0 mx-auto">
-                                                        {line.currencyCode}
-                                                    </div>
-                                                </TableCell>
-                                                <TableCell className="py-4 px-2">
-                                                    <Input
-                                                        type="number"
-                                                        step="0.000001"
-                                                        disabled={isViewOnly || line.currencyCode === 'SAR' || line.currencyCode === '---'}
-                                                        className="w-full h-11 bg-slate-50 rounded-xl text-center font-mono font-bold disabled:opacity-50 focus:bg-white transition-colors border-0 focus-visible:ring-2 focus-visible:ring-blue-500"
-                                                        value={line.exchangeRate}
-                                                        onChange={(e) => updateLine(line.tempId, 'exchangeRate', Number(e.target.value))}
-                                                    />
-                                                </TableCell>
-                                                <TableCell className="py-4 px-8 text-left">
-                                                    {!isViewOnly && (
-                                                        <Button
-                                                            size="icon"
-                                                            variant="ghost"
-                                                            onClick={() => removeLine(line.tempId)}
-                                                            className="w-10 h-10 text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded-xl transition-all"
-                                                        >
-                                                            <Trash2 size={18} />
-                                                        </Button>
-                                                    )}
-                                                </TableCell>
-                                            </TableRow>
-                                        ))}
-                                    </TableBody>
-                                </Table>
-                            </div>
-
-                            {!isViewOnly && (
+                                إضافة قيد جديد
+                            </CustomButton>
+                        </WithPermission>
+                    ) : (
+                        <div className="flex gap-2">
+                            {editingId && (
                                 <Button
-                                    onClick={addLine}
-                                    variant="ghost"
-                                    className="text-blue-600 font-bold"
+                                    onClick={() => {
+                                        const entry = entries.find(e => e.id === editingId);
+                                        if (entry) handleExportSingle(entry);
+                                    }}
+                                    variant="outline"
+                                    className="flex items-center gap-2 rounded-2xl font-bold border-emerald-200 text-emerald-600 hover:bg-emerald-50 transition-all"
+                                    size="lg"
                                 >
-                                    <Plus size={20} className="mr-2" />
-                                    إضافة سطر
+                                    <APP_ICONS.ACTIONS.EXPORT size={20} className="mr-2" />
+                                    تصدير PDF
                                 </Button>
                             )}
+                            <Button
+                                onClick={() => setView('list')}
+                                variant="outline"
+                                className="flex items-center gap-2 rounded-2xl font-bold transition-all"
+                                size="lg"
+                            >
+                                <APP_ICONS.ACTIONS.CHEVRON_LEFT size={20} className="mr-2 rotate-180" />
+                                العودة للقائمة
+                            </Button>
                         </div>
-                    </div>
+                    )}
+                </PageHeader>
 
-                    {/* Summary Sidebar */}
+                {view === 'list' ? (
                     <div className="space-y-6">
-                        <div className="bg-white p-7 rounded-[2rem] border border-slate-200 shadow-xl overflow-hidden relative group">
-                            <div className="absolute top-0 right-0 w-24 h-24 bg-blue-500/5 blur-3xl rounded-full -mr-10 -mt-10 group-hover:bg-blue-500/10 transition-all"></div>
-                            <div className="flex items-center gap-3 mb-6 border-b border-slate-100 pb-4">
-                                <IconBox icon={ArrowLeftRight} className="bg-blue-500 shadow-blue-200" boxSize="w-10 h-10" iconSize={18} />
-                                <h3 className="font-black text-slate-800">توازن القيد</h3>
-                            </div>
-                            <div className="space-y-5">
-                                <div className="flex justify-between items-center bg-slate-50 p-4 rounded-2xl">
-                                    <span className="text-xs font-bold text-slate-500 uppercase">المدين الكلي</span>
-                                    <span className="font-mono font-black text-slate-800">{totalBaseDebit.toLocaleString()}</span>
+                        <DataTable
+                            columns={columns}
+                            data={entries}
+                            compact={true}
+                            searchPlaceholder="بحث برقم القيد أو الوصف..."
+                            exportFileName="journal-list"
+                            noDataMessage={
+                                <div className="flex flex-col items-center gap-3">
+                                    <IconBox icon={APP_ICONS.ACTIONS.LIST} className="bg-accent text-muted-foreground/60 group-hover:bg-indigo-100 group-hover:text-indigo-600 transition-colors" boxSize="w-16 h-16" iconSize={32} />
+                                    <p className="text-muted-foreground/60 font-bold">لا توجد قيود مسجلة حالياً</p>
                                 </div>
-                                <div className="flex justify-between items-center bg-slate-50 p-4 rounded-2xl">
-                                    <span className="text-xs font-bold text-slate-500 uppercase">الدائن الكلي</span>
-                                    <span className="font-mono font-black text-slate-800">{totalBaseCredit.toLocaleString()}</span>
-                                </div>
-
-                                <div className="pt-4 mt-2">
-                                    <div className="flex flex-col gap-2 p-5 rounded-3xl bg-slate-900 border border-slate-800 shadow-2xl">
-                                        <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">فرق التوازن (SAR)</span>
-                                        <span className={cn(
-                                            "font-black font-mono text-3xl transition-all tabular-nums",
-                                            isBalanced ? "text-emerald-400" : "text-rose-400"
-                                        )}>
-                                            {(totalBaseDebit - totalBaseCredit).toLocaleString()}
-                                        </span>
-                                    </div>
-                                </div>
-
-                                {!isBalanced && (
-                                    <div className="animate-bounce-subtle mt-4 flex items-start gap-3 p-4 bg-rose-50 text-rose-700 rounded-2xl text-[13px] font-bold border border-rose-100">
-                                        <AlertCircle size={20} className="shrink-0" />
-                                        <p>يرجى تعديل القيم ليتساوى المدين مع الدائن قبل المتابعة.</p>
-                                    </div>
-                                )}
-
-                                {isBalanced && lines.length >= 2 && lines.some(l => l.accountId) && (
-                                    <div className="mt-4 flex items-center gap-3 p-4 bg-emerald-50 text-emerald-700 rounded-2xl text-[13px] font-bold border border-emerald-100 ring-4 ring-emerald-500/10">
-                                        <Check size={20} className="shrink-0" />
-                                        <p>القيد مالي متوازن وسليم محاسبياً</p>
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-
-                        <div className="bg-white p-7 rounded-[2rem] border border-slate-200 shadow-lg">
-                            <AttachmentUpload
-                                attachments={attachments}
-                                onChange={setAttachments}
-                                disabled={isViewOnly}
-                                label="المرفقات والوثائق"
-                            />
-                        </div>
-
-                        {!isViewOnly && (
-                            <div className="bg-gradient-to-br from-slate-900 to-slate-950 p-7 rounded-[2rem] text-white shadow-2xl border border-slate-800">
-                                <div className="flex items-center gap-2 mb-6 text-blue-400">
-                                    <RefreshCw size={20} className="animate-spin-slow" />
-                                    <h3 className="font-black">الإجراءات النهائية</h3>
-                                </div>
-                                <div className="space-y-4 pt-2">
-                                    <Button
-                                        disabled={saving || !description || !hasAmounts}
-                                        onClick={() => handleSave(false)}
-                                        variant="outline"
-                                        className="w-full h-12 bg-transparent text-slate-300 border-slate-700 hover:bg-slate-800 hover:text-white rounded-2xl font-black transition-all"
-                                    >
-                                        {saving ? 'جاري الاتصال بالسيرفر...' : 'حفظ كمسودة'}
-                                    </Button>
-                                    <Button
-                                        onClick={() => handleSave(true)}
-                                        disabled={!isBalanced || lines.some(l => !l.accountId) || saving || !description || !hasAmounts}
-                                        className={cn(
-                                            "w-full h-14 rounded-2xl font-black text-base shadow-lg transition-all",
-                                            isBalanced && !saving && description && hasAmounts ? "bg-blue-600 hover:bg-blue-700 shadow-blue-900/40" : "bg-slate-700 hover:bg-slate-700 text-slate-500 cursor-not-allowed"
-                                        )}
-                                    >
-                                        <Check size={20} className="ml-2" />
-                                        ترحيل القيد نهائياً
-                                    </Button>
-                                </div>
-                            </div>
-                        )}
+                            }
+                        />
                     </div>
-                </div>
-            )}
-            {isAccountModalOpen && (
-                <AccountModal
-                    onClose={() => setIsAccountModalOpen(false)}
-                    onSave={fetchMeta}
-                    accounts={accounts}
-                    currencies={currencies}
-                    branches={branches}
-                />
-            )}
-            <ConfirmationDialog
-                open={confirmDialog.open}
-                onOpenChange={(open) => setConfirmDialog(prev => ({ ...prev, open }))}
-                onConfirm={confirmDialog.onConfirm}
-                isLoading={isActionLoading}
-                title={confirmDialog.title}
-                description={confirmDialog.description}
-                variant={confirmDialog.variant}
-                confirmText={confirmDialog.confirmText}
-            />
+                ) : (
+                    <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
+                        <div className="lg:col-span-3 space-y-6">
+                            <div className="bg-card p-8 rounded-[2rem] border border-input shadow-2xl shadow-blue-500/5">
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                                    <div className="space-y-2">
+                                        <label className="flex items-center gap-2 text-sm font-black text-foreground/80 mr-1">
+                                            <APP_ICONS.MODULES.ENTITIES size={16} className={theme.accent} />
+                                            الفرع المحاسبي
+                                        </label>
+                                        <Select disabled={isViewOnly} value={branchId} onValueChange={setBranchId}>
+                                            <SelectTrigger className="h-12 bg-muted/30 rounded-2xl" dir="rtl">
+                                                <SelectValue placeholder="اختر الفرع" />
+                                            </SelectTrigger>
+                                            <SelectContent dir="rtl">
+                                                {branches.map(b => <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>)}
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                    <div className="space-y-2">
+                                        <label className="flex items-center gap-2 text-sm font-black text-foreground/80 mr-1">
+                                            <APP_ICONS.ACTIONS.CALENDAR size={16} className={theme.accent} />
+                                            تاريخ المعاملة
+                                        </label>
+                                        <Input
+                                            type="date"
+                                            disabled={isViewOnly}
+                                            value={date}
+                                            onChange={(e) => setDate(e.target.value)}
+                                            className="h-12 bg-muted/30 rounded-2xl font-mono font-bold"
+                                        />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <label className="flex items-center gap-2 text-sm font-black text-foreground/80 mr-1">
+                                            <APP_ICONS.REPORTS.ACCOUNT_STATEMENT size={16} className={theme.accent} />
+                                            وصف الحركة
+                                        </label>
+                                        <Input
+                                            type="text"
+                                            disabled={isViewOnly}
+                                            placeholder="مثال: فاتورة مبيعات رقم..."
+                                            value={description}
+                                            onChange={(e) => setDescription(e.target.value)}
+                                            className="h-12 bg-muted/30 rounded-2xl font-bold"
+                                        />
+                                    </div>
+                                </div>
 
-            <ViewAttachmentsModal
-                open={!!viewAttachmentsEntry}
-                onOpenChange={(open) => !open && setViewAttachmentsEntry(null)}
-                attachments={viewAttachmentsEntry?.attachments || []}
-                title={`مرفقات قيد رقم: ${viewAttachmentsEntry?.entryNumber}`}
-            />
-        </div>
+                                <div className="overflow-x-auto -mx-8">
+                                    <Table className="w-full text-right min-w-[800px]" dir="rtl">
+                                        <TableHeader>
+                                            <TableRow className={cn("hover:bg-opacity-90 border-none transition-all", theme.tableHeader)}>
+                                                <TableHead className="py-4 px-8 font-black text-right text-white">الحساب</TableHead>
+                                                <TableHead className="py-4 px-2 font-black text-center w-32 text-white">مدين (+)</TableHead>
+                                                <TableHead className="py-4 px-2 font-black text-center w-32 text-white">دائن (-)</TableHead>
+                                                <TableHead className="py-4 px-2 font-black text-center w-24 text-white">العملة</TableHead>
+                                                <TableHead className="py-4 px-2 font-black text-center w-32 text-white">سعر الصرف</TableHead>
+                                                <TableHead className="py-4 px-8 w-10"></TableHead>
+                                            </TableRow>
+                                        </TableHeader>
+                                        <TableBody className="divide-y divide-slate-50">
+                                            {lines.map((line) => (
+                                                <TableRow key={line.tempId} className={cn("group transition-all border-b-slate-50", theme.muted.replace('bg-', 'hover:bg-'))}>
+                                                    <TableCell className="py-4 px-8">
+                                                        <SearchableAccountSelect
+                                                            disabled={isViewOnly}
+                                                            accounts={leafAccounts}
+                                                            value={line.accountId}
+                                                            onChange={(val: string) => updateLine(line.tempId, 'accountId', val)}
+                                                            onAddNew={() => seIsActionModalOpen(true)}
+                                                        />
+                                                    </TableCell>
+                                                    <TableCell className="py-4 px-1">
+                                                        <Input
+                                                            type="number"
+                                                            disabled={isViewOnly}
+                                                            placeholder="0.00"
+                                                            className="w-full h-11 bg-accent/50 rounded-xl text-center font-mono font-bold focus:bg-card transition-colors border-0 focus-visible:ring-2 focus-visible:ring-blue-500"
+                                                            value={line.debit > 0 ? line.debit : ''}
+                                                            onChange={(e) => updateLine(line.tempId, 'debit', Number(e.target.value))}
+                                                        />
+                                                    </TableCell>
+                                                    <TableCell className="py-4 px-1">
+                                                        <Input
+                                                            type="number"
+                                                            disabled={isViewOnly}
+                                                            placeholder="0.00"
+                                                            className={cn("w-full h-11 bg-accent/50 rounded-xl text-center font-mono font-bold focus:bg-card transition-colors border-0 focus-visible:ring-2", theme.accent.replace('text-', 'focus-visible:ring-'))}
+                                                            value={line.credit > 0 ? line.credit : ''}
+                                                            onChange={(e) => updateLine(line.tempId, 'credit', Number(e.target.value))}
+                                                        />
+                                                    </TableCell>
+                                                    <TableCell className="py-4 px-2 text-center">
+                                                        <div className="inline-flex h-10 w-16 items-center justify-center bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-tighter shadow-sm flex-shrink-0 mx-auto">
+                                                            {line.currencyCode}
+                                                        </div>
+                                                    </TableCell>
+                                                    <TableCell className="py-4 px-2">
+                                                        <Input
+                                                            type="number"
+                                                            step="0.000001"
+                                                            disabled={isViewOnly || line.currencyCode === 'SAR' || line.currencyCode === '---'}
+                                                            className={cn("w-full h-11 bg-muted/50 rounded-xl text-center font-mono font-bold disabled:opacity-50 focus:bg-card transition-colors border-0 focus-visible:ring-2", theme.accent.replace('text-', 'focus-visible:ring-'))}
+                                                            value={line.exchangeRate}
+                                                            onChange={(e) => updateLine(line.tempId, 'exchangeRate', Number(e.target.value))}
+                                                        />
+                                                    </TableCell>
+                                                    <TableCell className="py-4 px-8 text-left">
+                                                        {!isViewOnly && (
+                                                            <Button
+                                                                size="icon"
+                                                                variant="ghost"
+                                                                onClick={() => removeLine(line.tempId)}
+                                                                className="w-10 h-10 text-muted-foreground/40 hover:text-rose-500 hover:bg-rose-50 rounded-xl transition-all"
+                                                            >
+                                                                <APP_ICONS.ACTIONS.DELETE size={18} />
+                                                            </Button>
+                                                        )}
+                                                    </TableCell>
+                                                </TableRow>
+                                            ))}
+                                        </TableBody>
+                                    </Table>
+                                </div>
+
+                                {!isViewOnly && (
+                                    <Button
+                                        onClick={addLine}
+                                        variant="ghost"
+                                        className={cn("mt-4 font-bold", theme.accent)}
+                                    >
+                                        <APP_ICONS.ACTIONS.ADD size={20} className="mr-2" />
+                                        إضافة سطر
+                                    </Button>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Summary Sidebar */}
+                        <div className="space-y-6">
+                            <div className="bg-card p-6 rounded-[2rem] border border-input shadow-lg">
+                                <AttachmentUpload
+                                    attachments={attachments}
+                                    onChange={setAttachments}
+                                    disabled={isViewOnly}
+                                    label="المرفقات والوثائق"
+                                />
+                            </div>
+                            <div className="bg-card p-6 rounded-[2rem] border border-input shadow-lg space-y-4">
+                                <div className="flex justify-between font-bold"><span>المدين الكلي:</span> <span className="font-mono">{totalBaseDebit.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span></div>
+                                <div className="flex justify-between font-bold"><span>الدائن الكلي:</span> <span className="font-mono">{totalBaseCredit.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span></div>
+                                <div className={cn("p-4 rounded-xl text-center font-black", isBalanced ? cn(theme.muted, theme.accent) : "bg-rose-50 text-rose-600")}>
+                                    الفرق: {(totalBaseDebit - totalBaseCredit).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                </div>
+
+                                {!isViewOnly && (
+                                    <>
+                                        <WithPermission permission="JOURNAL_CREATE">
+                                            <Button
+                                                onClick={() => handleSave(false)}
+                                                disabled={saving || !description || lines.some(l => !l.accountId) || !hasAmounts}
+                                                variant="outline"
+                                                className="w-full h-12 rounded-xl"
+                                            >
+                                                {saving ? 'جاري العفظ...' : 'حفظ كمسودة'}
+                                            </Button>
+                                        </WithPermission>
+                                        <WithPermission permission="JOURNAL_POST">
+                                            <Button
+                                                onClick={() => handleSave(true)}
+                                                disabled={!isBalanced || saving || !description || lines.some(l => !l.accountId) || !hasAmounts}
+                                                className={cn("w-full h-14 text-white rounded-xl shadow-lg", theme.primary, theme.shadow)}
+                                            >
+                                                {saving ? 'جاري الترحيل...' : 'ترحيل القيد'}
+                                            </Button>
+                                        </WithPermission>
+                                    </>
+                                )}
+                                {isViewOnly && status === 'POSTED' && (
+                                    <WithPermission permission="JOURNAL_UNPOST">
+                                        <Button
+                                            onClick={() => handleUnpost(editingId!)}
+                                            variant="outline"
+                                            className={cn("w-full h-14 rounded-2xl font-black border-amber-200 text-amber-600 hover:bg-amber-50 shadow-sm transition-all")}
+                                        >
+                                            <APP_ICONS.ACTIONS.UNDO size={20} className="ml-2" />
+                                            إلغاء ترحيل القيد
+                                        </Button>
+                                    </WithPermission>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                )}
+                {isActionModalOpen && (
+                    <ActionModal
+                        isOpen={true}
+                        onClose={() => seIsActionModalOpen(false)}
+                        title="إضافة حساب مالي"
+                        description="يرجى ملء تفاصيل الحساب المالي بدقة."
+                        icon={APP_ICONS.MODULES.ACCOUNTS}
+                        maxWidth="max-w-2xl"
+                        preventClose={true}
+                        showCloseButton={false}
+                    >
+                        <AccountForm
+                            accounts={accounts}
+                            currencies={currencies}
+                            branches={branches}
+                            onClose={() => seIsActionModalOpen(false)}
+                            onSave={fetchMeta}
+                        />
+                    </ActionModal>
+                )}
+                <ConfirmModal
+                    open={confirmDialog.open}
+                    onOpenChange={(open) => setConfirmDialog(prev => ({ ...prev, open }))}
+                    onConfirm={confirmDialog.onConfirm}
+                    loading={isActionLoading}
+                    title={confirmDialog.title}
+                    description={confirmDialog.description}
+                    variant={confirmDialog.variant as any}
+                    confirmLabel={confirmDialog.confirmText}
+                />
+
+                <ViewAttachmentsModal
+                    open={!!viewAttachmentsEntry}
+                    onOpenChange={(open) => !open && setViewAttachmentsEntry(null)}
+                    attachments={viewAttachmentsEntry?.attachments || []}
+                    title={`مرفقات قيد رقم: ${viewAttachmentsEntry?.entryNumber}`}
+                />
+            </div>
+        </ProtectedRoute>
     );
 };
 
 const JournalPageWrapper = () => (
     <Suspense fallback={
         <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4">
-            <Loader2 className="w-12 h-12 text-blue-600 animate-spin" />
-            <p className="text-slate-500 font-bold animate-pulse">جاري التحميل...</p>
+            <APP_ICONS.STATE.LOADING className="w-12 h-12 text-blue-600 animate-spin" />
+            <p className="text-muted-foreground/80 font-bold animate-pulse">جاري التحميل...</p>
         </div>
     }>
         <JournalPage />

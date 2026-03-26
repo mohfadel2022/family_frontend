@@ -2,12 +2,16 @@
 
 import React, { useState, useEffect } from 'react';
 import { cn } from '@/lib/utils';
-import { Search, Filter, Download, Printer, Table as TableIcon, Loader2, RefreshCcw, Globe, Building2, Shield, TrendingUp, TrendingDown, Layers } from 'lucide-react';
+import { usePageTheme } from '@/hooks/usePageTheme';
+import { APP_ICONS } from '@/lib/icons';
 import axios from 'axios';
 import { IconBox } from '@/components/ui/IconBox';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Button } from '@/components/ui/button';
+import { CustomButton } from '@/components/ui/CustomButton';
 import { Input } from '@/components/ui/input';
+import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
+import { WithPermission } from '@/components/auth/WithPermission';
 import {
     Select,
     SelectContent,
@@ -28,9 +32,9 @@ import {
 import { META_BASE, getAuthHeader } from '@/lib/api';
 
 const API_BASE = META_BASE;
-const AUTH_HEADER = getAuthHeader();
 
 const TrialBalancePage = () => {
+    const theme = usePageTheme();
     const [branch, setBranch] = useState('all');
     const [branches, setBranches] = useState<any[]>([]);
     const [report, setReport] = useState<any[]>([]);
@@ -42,18 +46,22 @@ const TrialBalancePage = () => {
     const fetchData = async () => {
         setLoading(true);
         try {
-            const [tbRes, branchRes, currRes] = await Promise.all([
+            const results = await Promise.allSettled([
                 axios.get(`${API_BASE}/reports/trial-balance`, {
                     params: { branchId: branch === 'all' ? undefined : branch },
-                    ...AUTH_HEADER
+                    ...getAuthHeader()
                 }),
-                axios.get(`${API_BASE}/branches`, AUTH_HEADER),
-                axios.get(`${API_BASE}/currencies`, AUTH_HEADER)
+                axios.get(`${API_BASE}/branches`, getAuthHeader()),
+                axios.get(`${API_BASE}/currencies`, getAuthHeader())
             ]);
 
-            setReport(tbRes.data);
-            setBranches(branchRes.data);
-            const base = currRes.data.find((c: any) => c.isBase);
+            const tbData = results[0].status === 'fulfilled' ? results[0].value.data : [];
+            const branchData = results[1].status === 'fulfilled' ? results[1].value.data : [];
+            const currData = results[2].status === 'fulfilled' ? results[2].value.data : [];
+
+            setReport(tbData);
+            setBranches(branchData);
+            const base = currData.find((c: any) => c.isBase);
             setBaseCurrency(base || { code: '---' });
         } catch (error) {
             console.error('Error fetching trial balance:', error);
@@ -105,11 +113,11 @@ const TrialBalancePage = () => {
     };
 
     const accountGroups = [
-        { key: 'ASSET', label: 'الأصول', icon: Building2, color: 'blue' },
-        { key: 'LIABILITY', label: 'الخصوم', icon: Shield, color: 'amber' },
-        { key: 'EQUITY', label: 'حقوق الملكية', icon: Globe, color: 'indigo' },
-        { key: 'REVENUE', label: 'الإيرادات', icon: TrendingUp, color: 'emerald' },
-        { key: 'EXPENSE', label: 'المصروفات', icon: TrendingDown, color: 'rose' },
+        { key: 'ASSET', label: 'الأصول', icon: APP_ICONS.MODULES.ACCOUNTS, color: 'blue' },
+        { key: 'LIABILITY', label: 'الخصوم', icon: APP_ICONS.MODULES.ROLES, color: 'amber' },
+        { key: 'EQUITY', label: 'حقوق الملكية', icon: APP_ICONS.SHARED.GLOBE, color: 'indigo' },
+        { key: 'REVENUE', label: 'الإيرادات', icon: APP_ICONS.ACTIONS.GROWTH, color: 'emerald' },
+        { key: 'EXPENSE', label: 'المصروفات', icon: APP_ICONS.ACTIONS.LOSS, color: 'rose' },
     ];
 
     const getTreesByCategory = () => {
@@ -172,107 +180,112 @@ const TrialBalancePage = () => {
     if (loading && report.length === 0) {
         return (
             <div className="h-96 flex flex-col items-center justify-center space-y-4">
-                <Loader2 className="animate-spin text-blue-600" size={40} />
-                <p className="text-slate-500 font-bold text-sm">جاري إنشاء ميزان المراجعة...</p>
+                <APP_ICONS.STATE.LOADING className={cn("animate-spin", theme.accent)} size={40} />
+                <p className="text-muted-foreground/80 font-bold text-sm">جاري إنشاء ميزان المراجعة...</p>
             </div>
         );
     }
 
     return (
+        <ProtectedRoute permission="REPORTS_TRIAL_BALANCE_VIEW">
         <div className="max-w-5xl mx-auto space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-700">
             {/* Header section with Premium Look */}
             <PageHeader
-                icon={TableIcon}
+                icon={APP_ICONS.REPORTS.TRIAL_BALANCE}
                 title="ميزان المراجعة"
                 description={`Trial Balance & Financial Position Summary (${baseCurrency?.code || '---'})`}
-                iconClassName="bg-gradient-to-br from-indigo-500 to-blue-600 shadow-blue-200"
                 iconSize={24}
                 className="mb-8"
             >
                 <div className="flex gap-2">
-                    <Button
-                        variant="outline"
-                        onClick={() => {
-                            import('@/lib/exportUtils').then(({ exportToExcel }) => {
-                                const allItems = categorizedTrees.flatMap(g => g.items);
-                                exportToExcel(
-                                    allItems.map(item => ({
-                                        ...item,
-                                        name: '  '.repeat(item.level) + item.name,
-                                        baseDebit: Number(item.baseDebit).toFixed(2),
-                                        baseCredit: Number(item.baseCredit).toFixed(2),
-                                        netBase: Number(item.netBase).toFixed(2),
-                                        foreignBalance: `${Number(item.foreignBalance).toFixed(2)} ${item.currency}`,
-                                        avgRate: Number(item.avgRate).toFixed(4)
-                                    })),
-                                    'Mezan_Morajaha',
-                                    ['رقم الحساب', 'اسم الحساب', 'مدين (أساسي)', 'دائن (أساسي)', 'الرصيد (أساسي)', 'الرصيد (أجنبي)', 'سعر الصرف'],
-                                    ['code', 'name', 'baseDebit', 'baseCredit', 'netBase', 'foreignBalance', 'avgRate']
-                                );
-                            });
-                        }}
-                        className="flex items-center gap-2 px-4 rounded-xl shadow-sm h-11 border-slate-200 text-slate-700 hover:bg-slate-50 font-black text-xs transition-all"
-                    >
-                        <Download size={16} className="text-emerald-500" />
-                        Excel
-                    </Button>
-                    <Button
-                        onClick={() => {
-                            import('@/lib/exportUtils').then(({ exportToPDF }) => {
-                                const allItems = categorizedTrees.flatMap(g => g.items);
-                                const selectedBranchName = branch === 'all' ? 'كافة الفروع' : branches.find(b => b.id === branch)?.name || '';
+                    <WithPermission permission="REPORTS_TRIAL_BALANCE_EXPORT">
+                        <CustomButton
+                            variant="outline"
+                            onClick={() => {
+                                import('@/lib/exportUtils').then(({ exportToExcel }) => {
+                                    const allItems = categorizedTrees.flatMap(g => g.items);
+                                    exportToExcel(
+                                        allItems.map(item => ({
+                                            ...item,
+                                            name: '  '.repeat(item.level) + item.name,
+                                            baseDebit: Number(item.baseDebit).toFixed(2),
+                                            baseCredit: Number(item.baseCredit).toFixed(2),
+                                            netBase: Number(item.netBase).toFixed(2),
+                                            foreignBalance: `${Number(item.foreignBalance).toFixed(2)} ${item.currency}`,
+                                            avgRate: Number(item.avgRate).toFixed(4)
+                                        })),
+                                        'Mezan_Morajaha',
+                                        ['رقم الحساب', 'اسم الحساب', 'مدين (أساسي)', 'دائن (أساسي)', 'الرصيد (أساسي)', 'الرصيد (أجنبي)', 'سعر الصرف'],
+                                        ['code', 'name', 'baseDebit', 'baseCredit', 'netBase', 'foreignBalance', 'avgRate']
+                                    );
+                                });
+                            }}
+                            className="flex items-center gap-2 px-4 rounded-xl shadow-sm h-11 border-input text-foreground/80 hover:bg-muted/50 font-black text-xs transition-all"
+                        >
+                            <APP_ICONS.ACTIONS.EXPORT size={16} className="text-emerald-500" />
+                            Excel
+                        </CustomButton>
+                    </WithPermission>
+                    <WithPermission permission="REPORTS_EXPORT">
+                        <CustomButton
+                            onClick={() => {
+                                import('@/lib/exportUtils').then(({ exportToPDF }) => {
+                                    const allItems = categorizedTrees.flatMap(g => g.items);
+                                    const selectedBranchName = branch === 'all' ? 'كافة الفروع' : branches.find(b => b.id === branch)?.name || '';
 
-                                exportToPDF(
-                                    allItems.map(item => ({
-                                        ...item,
-                                        name: '  '.repeat(item.level) + item.name,
-                                        baseDebit: Number(item.baseDebit) > 0 ? Number(item.baseDebit).toLocaleString(undefined, { minimumFractionDigits: 2 }) : '',
-                                        baseCredit: Number(item.baseCredit) > 0 ? Number(item.baseCredit).toLocaleString(undefined, { minimumFractionDigits: 2 }) : '',
-                                        netBase: Number(item.netBase).toLocaleString(undefined, { minimumFractionDigits: 2 }),
-                                        foreignBalance: !item.isBase ? `${Number(item.foreignBalance).toLocaleString(undefined, { minimumFractionDigits: 2 })} ${item.currency}` : '-',
-                                        avgRate: !item.isBase ? Number(item.avgRate).toFixed(4) : '-'
-                                    })),
-                                    'Mezan_Morajaha',
-                                    'ميزان المراجعة',
-                                    ['رقم الحساب', 'اسم الحساب', 'مدين (أساسي)', 'دائن (أساسي)', 'الرصيد (أساسي)', 'الرصيد (أجنبي)', 'سعر الصرف'],
-                                    ['code', 'name', 'baseDebit', 'baseCredit', 'netBase', 'foreignBalance', 'avgRate'],
-                                    `الفرع: ${selectedBranchName}`,
-                                    {
-                                        baseDebit: totalDebit.toLocaleString(undefined, { minimumFractionDigits: 2 }),
-                                        baseCredit: totalCredit.toLocaleString(undefined, { minimumFractionDigits: 2 })
-                                    }
-                                );
-                            });
-                        }}
-                        className="flex items-center gap-2 px-4 rounded-xl shadow-lg h-11 bg-slate-900 text-white hover:bg-black font-black text-xs transition-all"
-                    >
-                        <Download size={16} className="text-rose-400" />
-                        PDF
-                    </Button>
+                                    exportToPDF(
+                                        allItems.map(item => ({
+                                            ...item,
+                                            name: '  '.repeat(item.level) + item.name,
+                                            baseDebit: Number(item.baseDebit) > 0 ? Number(item.baseDebit).toLocaleString(undefined, { minimumFractionDigits: 2 }) : '',
+                                            baseCredit: Number(item.baseCredit) > 0 ? Number(item.baseCredit).toLocaleString(undefined, { minimumFractionDigits: 2 }) : '',
+                                            netBase: Number(item.netBase).toLocaleString(undefined, { minimumFractionDigits: 2 }),
+                                            foreignBalance: !item.isBase ? `${Number(item.foreignBalance).toLocaleString(undefined, { minimumFractionDigits: 2 })} ${item.currency}` : '-',
+                                            avgRate: !item.isBase ? Number(item.avgRate).toFixed(4) : '-'
+                                        })),
+                                        'Mezan_Morajaha',
+                                        'ميزان المراجعة',
+                                        ['رقم الحساب', 'اسم الحساب', 'مدين (أساسي)', 'دائن (أساسي)', 'الرصيد (أساسي)', 'الرصيد (أجنبي)', 'سعر الصرف'],
+                                        ['code', 'name', 'baseDebit', 'baseCredit', 'netBase', 'foreignBalance', 'avgRate'],
+                                        `الفرع: ${selectedBranchName}`,
+                                        {
+                                            baseDebit: totalDebit.toLocaleString(undefined, { minimumFractionDigits: 2 }),
+                                            baseCredit: totalCredit.toLocaleString(undefined, { minimumFractionDigits: 2 })
+                                        }
+                                    );
+                                });
+                            }}
+                            variant="primary"
+                            className="h-11 px-4 text-xs"
+                        >
+                            <APP_ICONS.ACTIONS.EXPORT size={16} className="text-rose-400" />
+                            PDF
+                        </CustomButton>
+                    </WithPermission>
                 </div>
             </PageHeader>
 
             {/* Stats Cards Section - Comprehensive Financial Summary */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
-                <div className="bg-white p-4 rounded-[2rem] border border-blue-100 shadow-sm relative overflow-hidden group">
+                <div className="bg-card p-4 rounded-[2rem] border border-blue-100 shadow-sm relative overflow-hidden group">
                     <p className="text-blue-600 font-black text-[9px] uppercase tracking-widest mb-1">إجمالي الأصول</p>
                     <h3 className="text-base font-black font-mono text-blue-700">
                         {(totalsByType['ASSET'] || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
                     </h3>
                 </div>
-                <div className="bg-white p-4 rounded-[2rem] border border-amber-100 shadow-sm relative overflow-hidden group">
+                <div className="bg-card p-4 rounded-[2rem] border border-amber-100 shadow-sm relative overflow-hidden group">
                     <p className="text-amber-600 font-black text-[9px] uppercase tracking-widest mb-1">إجمالي الخصوم</p>
                     <h3 className="text-base font-black font-mono text-amber-700">
                         {(totalsByType['LIABILITY'] || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
                     </h3>
                 </div>
-                <div className="bg-white p-4 rounded-[2rem] border border-emerald-100 shadow-sm relative overflow-hidden group">
+                <div className="bg-card p-4 rounded-[2rem] border border-emerald-100 shadow-sm relative overflow-hidden group">
                     <p className="text-emerald-600 font-black text-[9px] uppercase tracking-widest mb-1">إجمالي الإيرادات</p>
                     <h3 className="text-base font-black font-mono text-emerald-700">
                         {(totalsByType['REVENUE'] || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
                     </h3>
                 </div>
-                <div className="bg-white p-4 rounded-[2rem] border border-rose-100 shadow-sm relative overflow-hidden group">
+                <div className="bg-card p-4 rounded-[2rem] border border-rose-100 shadow-sm relative overflow-hidden group">
                     <p className="text-rose-600 font-black text-[9px] uppercase tracking-widest mb-1">إجمالي المصروفات</p>
                     <h3 className="text-base font-black font-mono text-rose-700">
                         {(totalsByType['EXPENSE'] || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
@@ -286,24 +299,24 @@ const TrialBalancePage = () => {
                 </div>
             </div>
 
-            <div className="bg-white p-5 rounded-[2.5rem] shadow-sm border border-slate-100 space-y-5">
+            <div className="bg-card p-5 rounded-[2.5rem] shadow-sm border border-border space-y-5">
                 {/* Filters Row */}
                 <div className="flex flex-wrap gap-4">
                     <div className="flex-1 min-w-[240px] relative">
-                        <Search className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                        <APP_ICONS.ACTIONS.SEARCH className="absolute right-3.5 top-1/2 -translate-y-1/2 text-muted-foreground/60" size={16} />
                         <Input
                             type="text"
                             placeholder="بحث عن حساب بالاسم أو الكود..."
-                            className="w-full pr-10 pl-4 h-11 bg-slate-50 border-slate-200 rounded-xl focus-visible:ring-blue-500 font-bold text-xs"
+                            className={cn("w-full pr-10 pl-4 h-11 bg-muted/50 border-input rounded-xl focus-visible:ring-2 font-bold text-xs", theme.accent.replace('text-', 'focus-visible:ring-'))}
                             value={search}
                             onChange={(e) => setSearch(e.target.value)}
                         />
                     </div>
-                    <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-xl px-0 group h-11 w-48 overflow-hidden">
+                    <div className="flex items-center gap-2 bg-muted/50 border border-input rounded-xl px-0 group h-11 w-48 overflow-hidden">
                         <Select value={branch} onValueChange={setBranch}>
-                            <SelectTrigger className="w-full bg-transparent border-0 ring-offset-transparent focus:ring-0 shadow-none font-black text-xs text-slate-700 h-full !outline-none" dir="rtl">
+                            <SelectTrigger className="w-full bg-transparent border-0 ring-offset-transparent focus:ring-0 shadow-none font-black text-xs text-foreground/80 h-full !outline-none" dir="rtl">
                                 <div className="flex items-center gap-2">
-                                    <Globe size={16} className="text-blue-500" />
+                                    <APP_ICONS.SHARED.GLOBE size={16} className={theme.accent} />
                                     <SelectValue placeholder="اختر الفرع" />
                                 </div>
                             </SelectTrigger>
@@ -316,11 +329,11 @@ const TrialBalancePage = () => {
                         </Select>
                     </div>
 
-                    <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-xl px-0 group h-11 w-40 overflow-hidden">
+                    <div className="flex items-center gap-2 bg-muted/50 border border-input rounded-xl px-0 group h-11 w-40 overflow-hidden">
                         <Select value={maxLevel} onValueChange={setMaxLevel}>
-                            <SelectTrigger className="w-full bg-transparent border-0 ring-offset-transparent focus:ring-0 shadow-none font-black text-xs text-slate-700 h-full !outline-none" dir="rtl">
+                            <SelectTrigger className="w-full bg-transparent border-0 ring-offset-transparent focus:ring-0 shadow-none font-black text-xs text-foreground/80 h-full !outline-none" dir="rtl">
                                 <div className="flex items-center gap-2">
-                                    <Layers size={16} className="text-blue-500" />
+                                    <APP_ICONS.ACTIONS.ACTIVITY size={16} className={theme.accent} />
                                     <SelectValue placeholder="المستوى" />
                                 </div>
                             </SelectTrigger>
@@ -334,28 +347,28 @@ const TrialBalancePage = () => {
                             </SelectContent>
                         </Select>
                     </div>
-                    <Button
+                    <CustomButton
                         variant="outline"
                         onClick={fetchData}
-                        className="flex items-center gap-2 px-5 h-11 border-slate-200 rounded-xl text-slate-700 font-black text-xs transition-all shadow-sm hover:bg-slate-50"
+                        className="h-11 px-5"
                     >
-                        {loading ? <RefreshCcw size={16} className="animate-spin text-blue-500" /> : <Filter size={16} className="text-blue-500" />}
+                        {loading ? <APP_ICONS.ACTIONS.REFRESH size={16} className={cn("animate-spin", theme.accent)} /> : <APP_ICONS.ACTIONS.FILTER size={16} className={theme.accent} />}
                         تحديث النتائج
-                    </Button>
+                    </CustomButton>
                 </div>
 
                 {/* Table Section */}
-                <div className="overflow-hidden rounded-3xl border border-slate-100 shadow-sm">
+                <div className="overflow-hidden rounded-3xl border border-border shadow-sm">
                     <Table className="w-full text-right" dir="rtl">
-                        <TableHeader className="bg-slate-50/70 border-b border-slate-100">
-                            <TableRow className="hover:bg-slate-50/70">
-                                <TableHead className="py-4 px-6 text-slate-500 text-[10px] uppercase tracking-widest font-black text-right">رقم الحساب</TableHead>
-                                <TableHead className="py-4 px-6 text-slate-500 text-[10px] uppercase tracking-widest font-black text-right w-1/4">اسم الحساب</TableHead>
-                                <TableHead className="py-4 px-6 text-slate-500 text-[10px] uppercase tracking-widest font-black text-center bg-blue-50/30">مدين ({baseCurrency?.code})</TableHead>
-                                <TableHead className="py-4 px-6 text-slate-500 text-[10px] uppercase tracking-widest font-black text-center bg-blue-50/30">دائن ({baseCurrency?.code})</TableHead>
-                                <TableHead className="py-4 px-6 text-slate-500 text-[10px] uppercase tracking-widest font-black text-center bg-blue-50/30 font-bold border-l border-slate-200">الرصيد النهائي ({baseCurrency?.code})</TableHead>
-                                <TableHead className="py-4 px-6 text-slate-500 text-[10px] uppercase tracking-widest font-black text-center bg-amber-50/30">الرصيد (أجنبي)</TableHead>
-                                <TableHead className="py-4 px-6 text-slate-500 text-[10px] uppercase tracking-widest font-black text-center bg-amber-50/30">متوسط السعر</TableHead>
+                        <TableHeader className={cn("border-b border-border", theme.tableHeader, "text-white")}>
+                            <TableRow className="hover:bg-black/5 border-none">
+                                <TableHead className="py-4 px-6 text-white text-[10px] uppercase tracking-widest font-black text-right">رقم الحساب</TableHead>
+                                <TableHead className="py-4 px-6 text-white text-[10px] uppercase tracking-widest font-black text-right w-1/4">اسم الحساب</TableHead>
+                                <TableHead className="py-4 px-6 text-white text-[10px] uppercase tracking-widest font-black text-center bg-white/10">مدين ({baseCurrency?.code})</TableHead>
+                                <TableHead className="py-4 px-6 text-white text-[10px] uppercase tracking-widest font-black text-center bg-white/10">دائن ({baseCurrency?.code})</TableHead>
+                                <TableHead className="py-4 px-6 text-white text-[10px] uppercase tracking-widest font-black text-center bg-white/10 font-bold border-l border-white/20">الرصيد النهائي ({baseCurrency?.code})</TableHead>
+                                <TableHead className="py-4 px-6 text-white text-[10px] uppercase tracking-widest font-black text-center bg-white/5">الرصيد (أجنبي)</TableHead>
+                                <TableHead className="py-4 px-6 text-white text-[10px] uppercase tracking-widest font-black text-center bg-white/5">متوسط السعر</TableHead>
                             </TableRow>
                         </TableHeader>
                         <TableBody>
@@ -363,7 +376,7 @@ const TrialBalancePage = () => {
                                 if (group.items.length === 0) return null;
                                 return (
                                     <React.Fragment key={group.key}>
-                                        <TableRow className="bg-slate-50/60 border-b border-slate-200/50">
+                                        <TableRow className="bg-muted/50/60 border-b border-input/50">
                                             <TableCell colSpan={7} className="py-3.5 px-6">
                                                 <div className="flex items-center gap-3">
                                                     <div className={cn("p-1.5 rounded-lg shadow-sm border border-white/50", lightColorMap[group.color])}>
@@ -377,12 +390,12 @@ const TrialBalancePage = () => {
                                         </TableRow>
                                         {group.items.map((item) => (
                                             <TableRow key={item.id} className={cn(
-                                                "hover:bg-slate-50/50 transition-colors group border-b border-slate-100",
-                                                item.level === 0 ? "bg-white" : "bg-slate-50/10"
+                                                "hover:bg-muted/30 transition-colors group border-b border-border",
+                                                item.level === 0 ? "bg-card" : "bg-muted/50/10"
                                             )}>
                                                 <TableCell className={cn(
                                                     "py-3.5 px-6 font-mono text-[10px] font-bold",
-                                                    item.level === 0 ? "text-slate-900" : "text-slate-400"
+                                                    item.level === 0 ? "text-foreground" : "text-muted-foreground/60"
                                                 )}>
                                                     {item.code}
                                                 </TableCell>
@@ -397,7 +410,7 @@ const TrialBalancePage = () => {
                                                         )} />
                                                         <span className={cn(
                                                             "font-black tracking-tight transition-colors",
-                                                            item.level === 0 ? "text-sm text-slate-800" : "text-xs text-slate-600 group-hover:text-slate-900"
+                                                            item.level === 0 ? "text-sm text-foreground/90" : "text-xs text-muted-foreground group-hover:text-foreground"
                                                         )}>
                                                             {item.name}
                                                         </span>
@@ -405,20 +418,20 @@ const TrialBalancePage = () => {
                                                 </TableCell>
                                                 <TableCell className={cn(
                                                     "py-3.5 px-6 font-mono text-center text-xs font-black",
-                                                    item.level === 0 ? "text-slate-900" : "text-slate-500 group-hover:text-slate-800"
+                                                    item.level === 0 ? "text-foreground" : "text-muted-foreground/80 group-hover:text-foreground/90"
                                                 )}>
                                                     {Number(item.baseDebit) > 0 ? Number(item.baseDebit).toLocaleString(undefined, { minimumFractionDigits: 2 }) : '-'}
                                                 </TableCell>
                                                 <TableCell className={cn(
                                                     "py-3.5 px-6 font-mono text-center text-xs font-black",
-                                                    item.level === 0 ? "text-slate-900" : "text-slate-500 group-hover:text-slate-800"
+                                                    item.level === 0 ? "text-foreground" : "text-muted-foreground/80 group-hover:text-foreground/90"
                                                 )}>
                                                     {Number(item.baseCredit) > 0 ? Number(item.baseCredit).toLocaleString(undefined, { minimumFractionDigits: 2 }) : '-'}
                                                 </TableCell>
-                                                <TableCell className="py-3.5 px-6 text-center border-l border-slate-100">
+                                                <TableCell className="py-3.5 px-6 text-center border-l border-border">
                                                     <span className={cn(
                                                         "text-xs font-black font-mono",
-                                                        Number(item.netBase) >= 0 ? "text-slate-900" : "text-rose-600"
+                                                        Number(item.netBase) >= 0 ? "text-foreground" : "text-rose-600"
                                                     )}>
                                                         {Number(item.netBase).toLocaleString(undefined, { minimumFractionDigits: 2 })}
                                                     </span>
@@ -426,10 +439,10 @@ const TrialBalancePage = () => {
                                                 <TableCell className="py-3.5 px-6 text-center">
                                                     {!item.isBase ? (
                                                         <div className="flex flex-col items-center gap-0.5">
-                                                            <span className="text-blue-600 font-mono text-xs font-black">
+                                                            <span className={cn("font-mono text-xs font-black", theme.accent)}>
                                                                 {Number(item.foreignBalance).toLocaleString(undefined, { minimumFractionDigits: 2 })}
                                                             </span>
-                                                            <span className="text-[9px] font-black text-blue-400 opacity-70 uppercase tracking-tighter">
+                                                            <span className={cn("text-[9px] font-black opacity-70 uppercase tracking-tighter", theme.accent.replace('-600', '-400'))}>
                                                                 {item.currency}
                                                             </span>
                                                         </div>
@@ -437,7 +450,7 @@ const TrialBalancePage = () => {
                                                 </TableCell>
                                                 <TableCell className="py-3.5 px-6 text-center">
                                                     {!item.isBase ? (
-                                                        <span className="text-slate-500 font-mono text-[10px] font-bold">
+                                                        <span className="text-muted-foreground/80 font-mono text-[10px] font-bold">
                                                             {Number(item.avgRate).toFixed(2)}
                                                         </span>
                                                     ) : '-'}
@@ -450,7 +463,7 @@ const TrialBalancePage = () => {
 
                             {filteredReport.length === 0 && (
                                 <TableRow>
-                                    <TableCell colSpan={7} className="py-12 text-center text-slate-400 font-bold text-sm italic">
+                                    <TableCell colSpan={7} className="py-12 text-center text-muted-foreground/60 font-bold text-sm italic">
                                         لا توجد بيانات مطابقة للبحث
                                     </TableCell>
                                 </TableRow>
@@ -459,10 +472,10 @@ const TrialBalancePage = () => {
                         <TableFooter className="bg-slate-900 text-white font-black hover:bg-slate-900 pointer-events-none">
                             <TableRow className="hover:bg-slate-900">
                                 <TableCell colSpan={2} />
-                                <TableCell className="py-5 px-6 text-center font-mono text-lg underline decoration-blue-500 decoration-2 underline-offset-4">
+                                <TableCell className="py-5 px-6 text-center font-mono text-lg underline decoration-white/40 decoration-2 underline-offset-4">
                                     {totalDebit.toLocaleString(undefined, { minimumFractionDigits: 2 })}
                                 </TableCell>
-                                <TableCell className="py-5 px-6 text-center font-mono text-lg underline decoration-blue-500 decoration-2 underline-offset-4">
+                                <TableCell className="py-5 px-6 text-center font-mono text-lg underline decoration-white/40 decoration-2 underline-offset-4">
                                     {totalCredit.toLocaleString(undefined, { minimumFractionDigits: 2 })}
                                 </TableCell>
                                 <TableCell colSpan={3} />
@@ -473,13 +486,14 @@ const TrialBalancePage = () => {
             </div>
 
             {/* Warning Text */}
-            <div className="p-4 bg-blue-50/50 border border-blue-100/50 rounded-2xl flex items-center gap-3">
-                <div className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-pulse"></div>
-                <p className="text-blue-800 text-[11px] font-black opacity-80">
+            <div className={cn("p-4 border rounded-2xl flex items-center gap-3", theme.muted, theme.border)}>
+                <div className={cn("w-1.5 h-1.5 rounded-full animate-pulse", theme.primary)}></div>
+                <p className={cn("text-[11px] font-black opacity-80", theme.accent.replace('text-', 'text-').replace('-600', '-800'))}>
                     ميزان المراجعة يتم حسابه بناءً على كافة القيود المرحّلة فقط. تأكد من ترحيل جميع القيود قبل استخراج الأرصدة الختامية.
                 </p>
             </div>
-        </div >
+        </div>
+        </ProtectedRoute>
     );
 };
 

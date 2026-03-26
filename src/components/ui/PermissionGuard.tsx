@@ -31,11 +31,11 @@ export const PermissionGuard = ({ permission, children, silent = false, fallback
             <div className="w-20 h-20 rounded-3xl bg-rose-50 flex items-center justify-center">
                 <Lock size={36} className="text-rose-400" />
             </div>
-            <h2 className="text-xl font-black text-slate-800">وصول مقيّد</h2>
-            <p className="text-slate-400 font-bold max-w-sm text-sm leading-relaxed">
+            <h2 className="text-xl font-black text-foreground/90">وصول مقيّد</h2>
+            <p className="text-muted-foreground/60 font-bold max-w-sm text-sm leading-relaxed">
                 ليس لديك الصلاحية الكافية للوصول إلى هذا القسم. تواصل مع مدير النظام لطلب الوصول.
             </p>
-            <code className="text-[10px] bg-slate-100 text-slate-400 px-3 py-1 rounded-lg font-mono">
+            <code className="text-[10px] bg-accent text-muted-foreground/60 px-3 py-1 rounded-lg font-mono">
                 {permission}
             </code>
         </div>

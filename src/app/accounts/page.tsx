@@ -1,35 +1,15 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from 'react';
-import {
-    ChevronDown,
-    Folder,
-    FileText,
-    Plus,
-    Loader2,
-    Edit2,
-    Trash2,
-    Search,
-    ArrowDownRight,
-    Library,
-    ChevronsDownUp,
-    ChevronsUpDown,
-    X
-} from 'lucide-react';
+import { APP_ICONS } from '@/lib/icons';
 import { cn } from '@/lib/utils';
 import axios from 'axios';
 import { toast } from 'sonner';
 import { IconBox } from '@/components/ui/IconBox';
 import { PageHeader } from '@/components/ui/PageHeader';
-import { Button } from '@/components/ui/button';
+import { CustomButton } from '@/components/ui/CustomButton';
 import { Input } from '@/components/ui/input';
-import {
-    Dialog,
-    DialogContent,
-    DialogDescription,
-    DialogHeader,
-    DialogTitle,
-} from '@/components/ui/dialog';
+
 import {
     Select,
     SelectContent,
@@ -38,8 +18,10 @@ import {
     SelectValue,
 } from '@/components/ui/select';
 
-import { AccountModal } from '@/components/AccountModal';
-import { ConfirmationDialog } from '@/components/ui/ConfirmationDialog';
+import { ActionModal } from '@/components/ui/ActionModal';
+import { AccountForm } from '@/components/forms/AccountForm';
+import { ConfirmModal } from '@/components/ui/ConfirmModal';
+import { UnauthorizedAccess } from '@/components/ui/UnauthorizedAccess';
 import { useAuth } from '@/context/AuthContext';
 import { META_BASE, getAuthHeader } from '@/lib/api';
 
@@ -96,7 +78,7 @@ const AccountItem = ({
             <div
                 className={cn(
                     "flex items-center gap-4 p-1 rounded-2xl group cursor-pointer transition-all border border-transparent",
-                    hasChildren ? "hover:bg-blue-50/30" : "hover:bg-slate-100/50"
+                    hasChildren ? "hover:bg-blue-50/30" : "hover:bg-accent/50"
                 )}
                 onClick={() => hasChildren && onToggle(id)}
             >
@@ -104,14 +86,14 @@ const AccountItem = ({
                     <div className="relative">
                         {hasChildren ? (
                             <div className={cn("transition-transform duration-300", isExpanded ? "rotate-0" : "-rotate-90")}>
-                                <ChevronDown size={16} className="text-slate-400 group-hover:text-blue-500" />
+                                <APP_ICONS.ACTIONS.CHEVRON_DOWN size={16} className="text-muted-foreground/60 group-hover:text-blue-500" />
                             </div>
                         ) : <div className="w-4" />}
                     </div>
 
                     <IconBox
-                        icon={hasChildren ? Folder : FileText}
-                        className={hasChildren ? "bg-blue-100 text-blue-600 shadow-blue-50" : "bg-slate-100 text-slate-400 shadow-none"}
+                        icon={hasChildren ? APP_ICONS.MODULES.ACCOUNT_FOLDER : APP_ICONS.MODULES.ACCOUNT_LEAF}
+                        className={hasChildren ? "bg-blue-100 text-blue-600 shadow-blue-50" : "bg-accent text-muted-foreground/60 shadow-none"}
                         boxSize="w-8 h-8"
                         iconSize={14}
                     />
@@ -119,14 +101,14 @@ const AccountItem = ({
                     <div className="flex flex-col">
                         <div className="flex items-center gap-2">
                             <span className="font-mono text-xs font-black text-blue-500 bg-blue-50 px-2 py-0.5 rounded-lg">{highlight(code)}</span>
-                            <span className="font-black text-sm text-slate-800 tracking-tight">{highlight(name)}</span>
+                            <span className="font-black text-sm text-foreground/90 tracking-tight">{highlight(name)}</span>
                         </div>
                         <span className={cn(
                             "text-[10px] font-black uppercase tracking-widest mt-0.5",
                             type === 'ASSET' ? "text-blue-500" :
                                 type === 'REVENUE' ? "text-emerald-500" :
                                     type === 'EXPENSE' ? "text-rose-500" :
-                                        "text-slate-400"
+                                        "text-muted-foreground/60"
                         )}>
                             {type === 'ASSET' ? 'أصول' :
                                 type === 'LIABILITY' ? 'خصوم' :
@@ -142,17 +124,17 @@ const AccountItem = ({
                         {/* Primary balance in account's own currency */}
                         <span className={cn(
                             "font-mono font-black text-lg tabular-nums",
-                            isNeg(balance) ? "text-rose-600" : "text-slate-900"
+                            isNeg(balance) ? "text-rose-600" : "text-foreground"
                         )}>
                             {fmtNum(balance ?? 0)}
-                            <span className="text-[10px] font-black text-slate-400 uppercase ml-1.5 tracking-tighter">{currency}</span>
+                            <span className="text-[10px] font-black text-muted-foreground/60 uppercase ml-1.5 tracking-tighter">{currency}</span>
                         </span>
 
                         {/* If parent has mixed currencies: show base equivalent */}
                         {hasMixedCurrencies && baseBalance !== undefined && baseCurrencyCode && (
-                            <span className="text-[10px] font-mono text-slate-400 tabular-nums">
+                            <span className="text-[12px] text-muted-foreground/60 tabular-nums">
                                 ≈ {fmtNum(baseBalance)}
-                                <span className="ml-1 font-black text-slate-300 uppercase">{baseCurrencyCode}</span>
+                                <span className="ml-1 font-black text-muted-foreground/40 uppercase">{baseCurrencyCode}</span>
                             </span>
                         )}
 
@@ -173,30 +155,30 @@ const AccountItem = ({
 
                     <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-all scale-95 group-hover:scale-100">
                         {canEdit && (
-                            <Button
+                            <CustomButton
                                 size="icon"
                                 variant="ghost"
                                 onClick={(e) => { e.stopPropagation(); onEdit(); }}
-                                className="w-10 h-10 text-slate-400 hover:text-blue-600 hover:bg-white rounded-xl shadow-sm hover:shadow-md transition-all border border-transparent hover:border-blue-100"
+                                className="w-10 h-10 text-muted-foreground/60 hover:text-blue-600 hover:bg-card border-transparent hover:border-blue-100"
                             >
-                                <Edit2 size={16} />
-                            </Button>
+                                <APP_ICONS.ACTIONS.EDIT_ALT size={16} />
+                            </CustomButton>
                         )}
                         {canDelete && (
-                            <Button
+                            <CustomButton
                                 size="icon"
                                 variant="ghost"
                                 onClick={(e) => { e.stopPropagation(); onDelete(); }}
-                                className="w-10 h-10 text-slate-400 hover:text-rose-600 hover:bg-white rounded-xl shadow-sm hover:shadow-md transition-all border border-transparent hover:border-rose-100"
+                                className="w-10 h-10 text-muted-foreground/60 hover:text-rose-600 hover:bg-card border-transparent hover:border-rose-100"
                             >
-                                <Trash2 size={16} />
-                            </Button>
+                                <APP_ICONS.ACTIONS.DELETE size={16} />
+                            </CustomButton>
                         )}
                     </div>
                 </div>
             </div>
             {hasChildren && isExpanded && (
-                <div className="mr-12 border-r-2 border-slate-100 pr-4 mt-2 mb-4 space-y-2 relative">
+                <div className="mr-12 border-r-2 border-border pr-4 mt-2 mb-4 space-y-2 relative">
                     <div className="absolute top-0 right-0 w-4 h-full bg-gradient-to-b from-transparent via-slate-50/50 to-transparent"></div>
                     {children}
                 </div>
@@ -207,7 +189,8 @@ const AccountItem = ({
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 const AccountsPage = () => {
-    const { checkPermission } = useAuth();
+    const { isAdmin, checkPermission, loading: authLoading } = useAuth();
+    const canView = checkPermission('ACCOUNTS_VIEW');
     const canCreate = checkPermission('ACCOUNTS_CREATE');
     const canEdit = checkPermission('ACCOUNTS_EDIT');
     const canDelete = checkPermission('ACCOUNTS_DELETE');
@@ -231,6 +214,30 @@ const AccountsPage = () => {
     // Search
     const [searchQuery, setSearchQuery] = useState('');
 
+    // Persistence Effect
+    useEffect(() => {
+        const savedSearch = localStorage.getItem('accounts_searchQuery');
+        if (savedSearch) setSearchQuery(savedSearch);
+
+        const savedExpanded = localStorage.getItem('accounts_expandedIds');
+        if (savedExpanded) {
+            try {
+                const parsed = JSON.parse(savedExpanded);
+                if (Array.isArray(parsed)) setExpandedIds(new Set(parsed));
+            } catch (e) {
+                console.error("Failed to restore expanded ids", e);
+            }
+        }
+    }, []);
+
+    useEffect(() => {
+        localStorage.setItem('accounts_searchQuery', searchQuery);
+    }, [searchQuery]);
+
+    useEffect(() => {
+        localStorage.setItem('accounts_expandedIds', JSON.stringify(Array.from(expandedIds)));
+    }, [expandedIds]);
+
     // Get all accounts that have at least one child (parent accounts)
     const getParentIds = useCallback((accs: any[]): string[] => {
         const parentIdSet = new Set(accs.map(a => a.parentId).filter(Boolean));
@@ -248,8 +255,10 @@ const AccountsPage = () => {
             setAccounts(accs);
             setCurrencies(currRes.data);
             setBranches(branchRes.data);
-            // Default: all parents expanded
-            setExpandedIds(new Set(getParentIds(accs)));
+            // Default: all parents expanded ONLY if not already set from localStorage
+            if (localStorage.getItem('accounts_expandedIds') === null) {
+                setExpandedIds(new Set(getParentIds(accs)));
+            }
         } catch (err) {
             console.error(err);
         } finally {
@@ -360,37 +369,48 @@ const AccountsPage = () => {
     const parentAccountsCount = accounts.filter(a => accounts.some(b => b.parentId === a.id)).length;
     const leafAccountsCount = accounts.filter(a => !accounts.some(b => b.parentId === a.id)).length;
 
+    if (authLoading) return (
+        <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4">
+            <APP_ICONS.STATE.LOADING className="w-12 h-12 text-blue-600 animate-spin" />
+            <p className="text-muted-foreground/80 font-black animate-pulse">جاري التحقق من الصلاحيات...</p>
+        </div>
+    );
+
+    if (!canView && !isAdmin) {
+        return <UnauthorizedAccess />;
+    }
+
     return (
         <div className="max-w-6xl mx-auto space-y-8 animate-in fade-in duration-700">
             {/* Header Section */}
             <PageHeader
-                icon={Library}
+                icon={APP_ICONS.MODULES.ACCOUNTS_TREE}
                 title="شجرة الحسابات"
                 description="Chart of Accounts Management"
-                iconClassName="bg-gradient-to-br from-indigo-600 to-blue-600 shadow-blue-200"
                 iconSize={24}
                 className="mb-8"
             >
                 {canCreate && (
-                    <Button
+                    <CustomButton
                         onClick={() => { setEditingAccount(null); setIsModalOpen(true); }}
-                        className="shadow-xl"
+                        variant="primary"
+                        className="h-12 px-6"
                     >
-                        <Plus size={18} className="mr-2 group-hover:rotate-90 transition-transform duration-300" />
+                        <APP_ICONS.ACTIONS.ADD size={18} />
                         إضافة حساب جديد
-                    </Button>
+                    </CustomButton>
                 )}
             </PageHeader>
 
             <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
                 {/* Stats & Tools */}
                 <div className="lg:col-span-1 space-y-6">
-                    <div className="bg-white p-5 rounded-[2rem] border border-slate-100 shadow-xl shadow-slate-200/50">
+                    <div className="bg-card p-5 rounded-[2rem] border border-border shadow-xl shadow-slate-900/5">
                         {/* Search */}
                         <div className="relative mb-4">
-                            <Search className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+                            <APP_ICONS.ACTIONS.SEARCH className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground/60" size={14} />
                             <Input
-                                className="w-full bg-slate-50 border-slate-200 rounded-2xl text-xs py-5 pr-9 pl-8 transition-all font-bold placeholder:text-slate-300"
+                                className="w-full bg-muted/50 border-input rounded-2xl text-xs py-5 pr-9 pl-8 transition-all font-bold placeholder:text-muted-foreground/40"
                                 placeholder="ابحث عن حساب..."
                                 value={searchQuery}
                                 onChange={e => setSearchQuery(e.target.value)}
@@ -398,15 +418,15 @@ const AccountsPage = () => {
                             {searchQuery && (
                                 <button
                                     onClick={() => setSearchQuery('')}
-                                    className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
+                                    className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground/60 hover:text-muted-foreground transition-colors"
                                 >
-                                    <X size={14} />
+                                    <APP_ICONS.ACTIONS.X size={14} />
                                 </button>
                             )}
                         </div>
 
                         {/* Expand / Collapse All — single toggle button */}
-                        <Button
+                        <CustomButton
                             size="sm"
                             variant="outline"
                             onClick={() => {
@@ -414,16 +434,16 @@ const AccountsPage = () => {
                                 const allExpanded = parentIds.every(id => expandedIds.has(id));
                                 allExpanded ? handleCollapseAll() : handleExpandAll();
                             }}
-                            className="w-full justify-center gap-2 text-xs font-black rounded-xl border-slate-200 hover:border-blue-300 hover:text-blue-600 hover:bg-blue-50 transition-all mb-5"
+                            className="w-full justify-center h-10 mb-5"
                         >
                             {getParentIds(accounts).every(id => expandedIds.has(id))
-                                ? <><ChevronsDownUp size={13} /> طي الكل</>
-                                : <><ChevronsUpDown size={13} /> توسيع الكل</>
+                                ? <><APP_ICONS.ACTIONS.COLLAPSE_ALL size={13} /> طي الكل</>
+                                : <><APP_ICONS.ACTIONS.EXPAND_ALL size={13} /> توسيع الكل</>
                             }
-                        </Button>
+                        </CustomButton>
 
                         <div className="space-y-4">
-                            <h4 className="text-xs font-black text-slate-400 uppercase tracking-[0.2em]">إحصائيات الشجرة</h4>
+                            <h4 className="text-xs font-black text-muted-foreground/60 uppercase tracking-[0.2em]">إحصائيات الشجرة</h4>
                             <div className="grid grid-cols-2 gap-2">
                                 <div className="p-3 bg-blue-50 rounded-2xl border border-blue-100">
                                     <div className="text-blue-600 font-black text-xl">{accounts.length}</div>
@@ -445,7 +465,7 @@ const AccountsPage = () => {
                         </div>
 
                         <div className="mt-5 p-5 bg-gradient-to-br from-blue-600 to-indigo-700 rounded-[1.5rem] text-white overflow-hidden relative group">
-                            <ArrowDownRight size={60} className="absolute -bottom-4 -left-4 opacity-10 group-hover:scale-110 transition-transform" />
+                            <APP_ICONS.REPORTS.BRANCH_EXPENSE size={60} className="absolute -bottom-4 -left-4 opacity-10 group-hover:scale-110 transition-transform" />
                             <h5 className="font-black text-sm mb-1">هيكلة ذكية</h5>
                             <p className="text-[10px] text-blue-100 font-bold leading-relaxed">
                                 قم بتنظيم حساباتك في مستويات غير محدودة. الحسابات الرئيسية تجمع أرصدة الفرعية تلقائياً.
@@ -456,41 +476,41 @@ const AccountsPage = () => {
 
                 {/* Tree View */}
                 <div className="lg:col-span-3">
-                    <div className="bg-white/80 backdrop-blur-sm p-8 rounded-[2.5rem] border border-slate-100 shadow-2xl min-h-[500px]">
+                    <div className="bg-card/80 backdrop-blur-sm p-8 rounded-[2.5rem] border border-border shadow-2xl min-h-[500px]">
                         {loading ? (
                             <div className="flex flex-col items-center justify-center p-20 gap-4">
                                 <div className="relative">
-                                    <Loader2 className="w-16 h-16 text-blue-600 animate-spin" />
+                                    <APP_ICONS.STATE.LOADING className="w-16 h-16 text-blue-600 animate-spin" />
                                     <div className="absolute inset-0 flex items-center justify-center">
                                         <div className="w-4 h-4 bg-blue-600 rounded-full"></div>
                                     </div>
                                 </div>
-                                <p className="text-slate-500 font-black animate-pulse">جاري بناء معمارية الحسابات...</p>
+                                <p className="text-muted-foreground/80 font-black animate-pulse">جاري بناء معمارية الحسابات...</p>
                             </div>
                         ) : (
                             <div className="space-y-2">
                                 {/* Search indicator */}
                                 {searchQuery && (
                                     <div className="flex items-center gap-2 mb-4 px-2">
-                                        <Search size={14} className="text-blue-500" />
+                                        <APP_ICONS.ACTIONS.SEARCH size={14} className="text-blue-500" />
                                         <span className="text-xs font-black text-blue-600">
-                                            نتائج البحث عن: "<span className="text-slate-800">{searchQuery}</span>"
+                                            نتائج البحث عن: "<span className="text-foreground/90">{searchQuery}</span>"
                                         </span>
                                     </div>
                                 )}
                                 {accounts.length > 0 ? (
                                     buildTree(null).length > 0 ? buildTree(null) : (
                                         <div className="flex flex-col items-center justify-center py-20 gap-4">
-                                            <Search size={40} className="text-slate-200" />
-                                            <p className="font-black text-slate-400">لا توجد حسابات تطابق البحث</p>
+                                            <APP_ICONS.ACTIONS.SEARCH size={40} className="text-muted-foreground/20" />
+                                            <p className="font-black text-muted-foreground/60">لا توجد حسابات تطابق البحث</p>
                                         </div>
                                     )
                                 ) : (
                                     <div className="flex flex-col items-center justify-center py-32 gap-6">
-                                        <IconBox icon={Library} className="bg-slate-100 text-slate-300" boxSize="w-20 h-20" iconSize={40} />
+                                        <IconBox icon={APP_ICONS.MODULES.ACCOUNTS} className="bg-accent text-muted-foreground/40" boxSize="w-20 h-20" iconSize={40} />
                                         <div className="text-center">
-                                            <p className="font-black text-xl text-slate-400">لا توجد حسابات مسجلة حالياً</p>
-                                            <p className="text-slate-300 text-xs font-bold mt-1">ابدأ بإضافة أول حساب لشجرتك المحاسبية</p>
+                                            <p className="font-black text-xl text-muted-foreground/60">لا توجد حسابات مسجلة حالياً</p>
+                                            <p className="text-muted-foreground/40 text-xs font-bold mt-1">ابدأ بإضافة أول حساب لشجرتك المحاسبية</p>
                                         </div>
                                     </div>
                                 )}
@@ -501,26 +521,37 @@ const AccountsPage = () => {
             </div>
 
             {isModalOpen && (
-                <AccountModal
-                    account={editingAccount}
-                    accounts={accounts}
-                    currencies={currencies}
-                    branches={branches}
+                <ActionModal
+                    isOpen={true}
                     onClose={() => setIsModalOpen(false)}
-                    onSave={fetchData}
-                />
+                    title={editingAccount ? 'تعديل بيانات الحساب' : 'إضافة حساب مالي'}
+                    description="يرجى ملء تفاصيل الحساب المالي بدقة."
+                    icon={APP_ICONS.MODULES.ACCOUNTS}
+                    maxWidth="max-w-2xl"
+                    preventClose={true}
+                    showCloseButton={false}
+                >
+                    <AccountForm
+                        account={editingAccount}
+                        accounts={accounts}
+                        currencies={currencies}
+                        branches={branches}
+                        onClose={() => setIsModalOpen(false)}
+                        onSave={fetchData}
+                    />
+                </ActionModal>
             )}
 
-            <ConfirmationDialog
+            <ConfirmModal
                 open={isDeleteDialogOpen}
                 onOpenChange={setIsDeleteDialogOpen}
                 onConfirm={confirmDelete}
-                isLoading={isDeleting}
-                variant="destructive"
+                loading={isDeleting}
+                variant="danger"
                 title="حذف الحساب المالي"
                 description="هل أنت متأكد من حذف هذا الحساب؟ لا يمكن التراجع عن هذه العملية إذا كانت هناك بيانات مرتبطة."
-                confirmText="حذف نهائي"
-                cancelText="إلغاء الأمر"
+                confirmLabel="حذف نهائي"
+                cancelLabel="إلغاء الأمر"
             />
         </div>
     );

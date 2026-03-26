@@ -39,7 +39,7 @@ export function SearchableAccountSelect({
                     variant="outline"
                     role="combobox"
                     aria-expanded={open}
-                    className="w-full justify-between h-11 bg-transparent border-0 border-b-2 border-slate-200 focus:border-blue-500 rounded-none shadow-none font-black text-right outline-none ring-0 focus:ring-0 focus:ring-offset-0 px-2 disabled:opacity-50"
+                    className="w-full justify-between h-11 bg-transparent border-0 border-b-2 border-input focus:border-blue-500 rounded-none shadow-none font-black text-right outline-none ring-0 focus:ring-0 focus:ring-offset-0 px-2 disabled:opacity-50"
                 >
                     <span className="truncate">
                         {selectedAccount
@@ -49,11 +49,11 @@ export function SearchableAccountSelect({
                     <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                 </Button>
             </PopoverTrigger>
-            <PopoverContent className="w-[500px] max-w-[95vw] p-0 shadow-2xl border-slate-200 rounded-2xl" align="start" dir="rtl">
+            <PopoverContent className="w-[500px] max-w-[95vw] p-0 shadow-2xl border-input rounded-2xl" align="start" dir="rtl">
                 <Command dir="rtl">
                     <CommandInput placeholder="بحث برقم الكود أو الاسم..." className="text-right h-12" />
                     <CommandList>
-                        <CommandEmpty className="py-6 text-center text-sm text-slate-500">لم يتم العثور على حساب.</CommandEmpty>
+                        <CommandEmpty className="py-6 text-center text-sm text-muted-foreground/80">لم يتم العثور على حساب.</CommandEmpty>
                         <CommandGroup>
                             <CommandItem
                                 value="--add-new--"
@@ -77,7 +77,7 @@ export function SearchableAccountSelect({
                                     className="flex items-center justify-between py-3 cursor-pointer"
                                 >
                                     <div className="flex items-center gap-2">
-                                        <span className="font-mono text-xs bg-slate-100 px-1.5 py-0.5 rounded text-slate-500">{acc.code}</span>
+                                        <span className="font-mono text-xs bg-accent px-1.5 py-0.5 rounded text-muted-foreground/80">{acc.code}</span>
                                         <span className="font-bold">{acc.name}</span>
                                     </div>
                                     <Check

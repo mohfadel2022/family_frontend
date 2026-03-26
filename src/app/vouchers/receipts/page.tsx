@@ -1,36 +1,14 @@
 "use client";
 
 import React, { useState, useEffect } from 'react';
-import {
-    Plus,
-    Trash2,
-    Check,
-    AlertCircle,
-    RefreshCw,
-    Loader2,
-    List,
-    FilePlus2,
-    Edit3,
-    Calendar,
-    ArrowLeftRight,
-    Search,
-    ChevronLeft,
-    Building2,
-    FileText,
-    RotateCcw,
-    Eye,
-    TrendingUp,
-    Download,
-    Users,
-    AlertTriangle,
-    Paperclip
-} from 'lucide-react';
+import { APP_ICONS } from '@/lib/icons';
 import { cn } from '@/lib/utils';
 import axios from 'axios';
 import { toast } from 'sonner';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { IconBox } from '@/components/ui/IconBox';
 import { Button } from '@/components/ui/button';
+import { CustomButton } from '@/components/ui/CustomButton';
 import { Input } from '@/components/ui/input';
 import {
     Select,
@@ -49,15 +27,19 @@ import {
 } from '@/components/ui/table';
 import { DataTable } from '@/components/ui/data-table';
 import { ColumnDef } from '@tanstack/react-table';
-import { useSearchParams } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense } from 'react';
 import { SearchableAccountSelect } from '@/components/SearchableAccountSelect';
-import { AccountModal } from '@/components/AccountModal';
-import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
+import { ActionModal } from '@/components/ui/ActionModal';
+import { AccountForm } from '@/components/forms/AccountForm';
+import { ConfirmModal } from '@/components/ui/ConfirmModal';
 import { AttachmentUpload } from '@/components/AttachmentUpload';
 import { ViewAttachmentsModal } from '@/components/ViewAttachmentsModal';
 import { useAuth } from '@/context/AuthContext';
+import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
+import { WithPermission } from '@/components/auth/WithPermission';
 import { API_BASE, getAuthHeader } from '@/lib/api';
+import { usePageTheme } from '@/hooks/usePageTheme';
 
 // Remove local API_BASE and getAuthHeader, now using imports from @/lib/api
 
@@ -75,17 +57,23 @@ interface JournalLine {
 }
 
 const ReceiptsPage = () => {
+    const router = useRouter();
+    const theme = usePageTheme();
     const { checkPermission } = useAuth();
-    const canCreate = checkPermission('VOUCHERS_CREATE');
-    const canEdit = checkPermission('VOUCHERS_EDIT');
-    const canDelete = checkPermission('VOUCHERS_DELETE');
-    const canExport = checkPermission('VOUCHERS_EXPORT');
+    const canView = checkPermission('RECEIPT_VIEW');
+    const canCreate = checkPermission('RECEIPT_CREATE');
+    const canEdit = checkPermission('RECEIPT_EDIT');
+    const canDelete = checkPermission('RECEIPT_DELETE');
+    const canPrint = checkPermission('RECEIPT_PRINT');
+    const canUnpost = checkPermission('RECEIPT_UNPOST');
+    const canPost = checkPermission('RECEIPT_POST');
 
     const [view, setView] = useState<'list' | 'form'>('list');
     const [entries, setEntries] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [editingId, setEditingId] = useState<string | null>(null);
     const [isViewOnly, setIsViewOnly] = useState(false);
+    const [status, setStatus] = useState<string | null>(null);
 
     // Form State
     const [description, setDescription] = useState('');
@@ -98,7 +86,7 @@ const ReceiptsPage = () => {
     const [branches, setBranches] = useState<any[]>([]);
     const [saving, setSaving] = useState(false);
     const [currencies, setCurrencies] = useState<any[]>([]);
-    const [isAccountModalOpen, setIsAccountModalOpen] = useState(false);
+    const [isActionModalOpen, seIsActionModalOpen] = useState(false);
     const [subsMembers, setSubsMembers] = useState<any[]>([]);
 
     // Attachment Viewer State
@@ -108,7 +96,7 @@ const ReceiptsPage = () => {
     const [confirmOpen, setConfirmOpen] = useState(false);
     const [confirmAction, setConfirmAction] = useState<(() => Promise<void>) | null>(null);
     const [confirmConfig, setConfirmConfig] = useState<{ title: string; description: string; variant: 'danger' | 'warning'; icon: any; label: string }>(
-        { title: '', description: '', variant: 'danger', icon: AlertTriangle, label: '' }
+        { title: '', description: '', variant: 'danger', icon: APP_ICONS.STATE.WARNING, label: '' }
     );
     const [confirmLoading, setConfirmLoading] = useState(false);
 
@@ -129,20 +117,20 @@ const ReceiptsPage = () => {
 
     // Only leaf accounts (those without children) can be used in voucher lines
     const leafAccounts = accounts.filter(a =>
-        !accounts.some(b => b.parentId === a.id) &&
-        (a.type === 'REVENUE' || a.type === 'ASSET' || a.type === 'LIABILITY')
+        !accounts.some(b => b.parentId === a.id)
     );
 
     const searchParams = useSearchParams();
     const entryId = searchParams.get('id');
 
     useEffect(() => {
+        if (!canView) return;
         fetchMeta();
         fetchEntries();
         if (entryId) {
             fetchEntryById(entryId);
         }
-    }, [entryId]);
+    }, [entryId, canView]);
 
     const fetchEntryById = async (id: string) => {
         try {
@@ -192,6 +180,7 @@ const ReceiptsPage = () => {
             { tempId: '2', accountId: '', currencyId: '', currencyCode: '---', debit: 0, credit: 0, exchangeRate: 1, baseDebit: 0, baseCredit: 0 },
         ]);
         setAttachments([]);
+        setStatus(null);
     };
 
     const fetchRate = async (currencyId: string, targetDate: string) => {
@@ -246,7 +235,7 @@ const ReceiptsPage = () => {
                 `سند قبض رقم: ${entry.entryNumber}`,
                 ['الحساب', 'مدين', 'دائن', 'العملة', 'سعر الصرف'],
                 ['account', 'debit', 'credit', 'currency', 'exchangeRate'],
-                `التاريخ: ${new Date(entry.date).toLocaleDateString('ar-DZ')} | البيان: ${entry.description}`,
+                `التاريخ: ${new Date(entry.date).toLocaleDateString('ar-AR')} | البيان: ${entry.description}`,
                 {
                     debit: totalDebit.toLocaleString(undefined, { minimumFractionDigits: 2 }),
                     credit: totalCredit.toLocaleString(undefined, { minimumFractionDigits: 2 })
@@ -262,8 +251,12 @@ const ReceiptsPage = () => {
     };
 
     const handleEdit = async (entry: any, viewOnly: boolean = false) => {
-        setIsViewOnly(viewOnly);
+        // Force viewOnly if linked to a subscription collection
+        const isLinked = !!entry.subscriptionCollection;
+        setIsViewOnly(viewOnly || isLinked);
+        
         setEditingId(entry.id);
+        setStatus(entry.status);
         setDescription(entry.description || '');
         setDate(new Date(entry.date).toISOString().split('T')[0]);
         setBranchId(entry.branchId || '');
@@ -326,12 +319,11 @@ const ReceiptsPage = () => {
             const acc = accounts.find(a => a.id === line.accountId);
             if (!acc) continue;
 
-            if (acc.type === 'ASSET' && Number(line.credit) > 0) {
-                return toast.error(`الحساب ${acc.name} (أصل) يجب أن يكون في الجانب المدين فقط في سند القبض`);
+            if (acc.type === 'ASSET' && Number(line.credit) > 0 && Number(line.debit) === 0) {
+                // It's technically possible to decrease an asset in a receipt (e.g. discount), but usually cash is debited.
+                // We'll just allow it or keep a mild warning, but let's remove the strict block to allow flexibility.
             }
-            if (acc.type === 'REVENUE' && Number(line.debit) > 0) {
-                return toast.error(`الحساب ${acc.name} (إيراد) يجب أن يكون في الجانب الدائن فقط في سند القبض`);
-            }
+            // Removed strict restrictions that block Liabilities/Equity.
         }
 
         setSaving(true);
@@ -378,13 +370,15 @@ const ReceiptsPage = () => {
                 title: 'إلغاء ترحيل السند',
                 description: 'هل أنت متأكد من إلغاء ترحيل هذا السند؟ سيعود السند إلى حالة المسودة ويمكن تعديله مرة أخرى.',
                 variant: 'warning',
-                icon: RotateCcw,
+                icon: APP_ICONS.ACTIONS.UNDO,
                 label: 'إلغاء الترحيل',
             },
             async () => {
                 await axios.post(`${API_BASE}/journals/${id}/unpost`, {}, getAuthHeader());
                 toast.success('تم إلغاء ترحيل السند بنجاح');
                 fetchEntries();
+                setIsViewOnly(false);
+                setStatus('DRAFT');
             }
         );
     };
@@ -395,7 +389,7 @@ const ReceiptsPage = () => {
                 title: 'حذف سند القبض',
                 description: 'هل أنت متأكد من حذف هذا السند؟ لا يمكن التراجع عن هذه العملية.',
                 variant: 'danger',
-                icon: Trash2,
+                icon: APP_ICONS.ACTIONS.DELETE,
                 label: 'حذف السند',
             },
             async () => {
@@ -413,32 +407,33 @@ const ReceiptsPage = () => {
 
     const columns = React.useMemo<ColumnDef<any>[]>(() => [
         {
-            accessorKey: 'entryNumber',
-            header: 'رقم السند',
-            cell: ({ row }) => <div className="bg-emerald-50 text-emerald-600 px-3 py-1 rounded-lg text-xs font-black">{row.original.entryNumber}</div>
+            id: 'reference',
+            header: 'المرجع / الرقم',
+            cell: ({ row }) => {
+                const entry = row.original;
+                const count = entry.attachments?.length || 0;
+                return (
+                    <div className="flex items-center gap-2">
+                        <div className={cn("px-2 py-0.5 rounded-md text-[10px] font-black", theme.muted, theme.accent)}>
+                            {entry.entryNumber}
+                        </div>
+                        {count > 0 && (
+                            <button
+                                onClick={(e) => { e.stopPropagation(); setViewAttachmentsEntry(entry); }}
+                                className={cn("flex items-center gap-1 p-1 rounded-md transition-all opacity-60 hover:opacity-100", theme.accent, theme.muted.replace('bg-', 'hover:bg-'))}
+                                title={`${count} مرفق(ات) - انقر للعرض`}
+                            >
+                                <APP_ICONS.ACTIONS.ATTACHMENT size={12} />
+                            </button>
+                        )}
+                    </div>
+                );
+            },
         },
         {
             accessorKey: 'date',
             header: 'التاريخ',
-            cell: ({ row }) => <span className="text-slate-500 text-sm">{new Date(row.original.date).toLocaleDateString('ar-DZ')}</span>
-        },
-        {
-            id: 'attachments',
-            header: '',
-            cell: ({ row }) => {
-                const count = row.original.attachments?.length || 0;
-                if (count === 0) return null;
-                return (
-                    <button
-                        onClick={(e) => { e.stopPropagation(); setViewAttachmentsEntry(row.original); }}
-                        className="flex items-center gap-1 text-slate-400 hover:text-blue-600 hover:bg-blue-50 p-1.5 rounded-lg transition-all"
-                        title={`${count} مرفق(ات) - انقر للعرض`}
-                    >
-                        <Paperclip size={12} />
-                        <span className="text-[10px] font-bold">{count}</span>
-                    </button>
-                );
-            }
+            cell: ({ row }) => <span className="font-mono text-muted-foreground/80">{new Date(row.original.date).toLocaleDateString('ar-AR')}</span>
         },
         {
             id: 'amounts',
@@ -451,22 +446,22 @@ const ReceiptsPage = () => {
                 return (
                     <div className="flex flex-col gap-0.5 min-w-[100px]">
                         <div className="flex items-center gap-1.5">
-                            <span className="font-black text-slate-700 text-sm">
+                            <span className="font-black text-foreground/80 text-sm">
                                 {foreignLine
                                     ? (Number(foreignLine.debit || foreignLine.credit) * Number(foreignLine.exchangeRate)).toLocaleString(undefined, { minimumFractionDigits: 2 })
                                     : Number(entry.totalAmount).toLocaleString(undefined, { minimumFractionDigits: 2 })
                                 }
                             </span>
-                            <span className="text-[10px] font-black text-slate-400 uppercase">
+                            <span className="text-[10px] font-black text-muted-foreground/60 uppercase">
                                 {baseCurrency?.code}
                             </span>
                         </div>
                         {foreignLine && (
-                            <div className="flex items-center gap-1.5 opacity-80 border-t border-slate-100 mt-0.5 pt-0.5">
-                                <span className="font-bold text-emerald-600 text-[11px]">
+                            <div className="flex items-center gap-1.5 opacity-80 border-t border-border mt-0.5 pt-0.5">
+                                <span className={cn("font-bold text-[11px]", theme.accent)}>
                                     {Number(foreignLine.debit || foreignLine.credit).toLocaleString(undefined, { minimumFractionDigits: 2 })}
                                 </span>
-                                <span className="text-[9px] font-black text-slate-400 uppercase">
+                                <span className="text-[9px] font-black text-muted-foreground/60 uppercase">
                                     {foreignLine.currency?.code}
                                 </span>
                             </div>
@@ -478,7 +473,7 @@ const ReceiptsPage = () => {
         {
             accessorKey: 'description',
             header: 'البيان',
-            cell: ({ row }) => <span className="font-bold text-slate-800">{row.original.description}</span>
+            cell: ({ row }) => <span className="font-bold text-foreground/90">{row.original.description}</span>
         },
         {
             accessorKey: 'status',
@@ -486,7 +481,7 @@ const ReceiptsPage = () => {
             cell: ({ row }) => (
                 <span className={cn(
                     "px-3 py-1 rounded-full text-[10px] font-black uppercase",
-                    row.original.status === 'POSTED' ? "bg-emerald-100 text-emerald-600" : "bg-amber-100 text-amber-600"
+                    row.original.status === 'POSTED' ? "bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400" : "bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400"
                 )}>
                     {row.original.status === 'POSTED' ? 'رحّــــــــل' : 'مســــودة'}
                 </span>
@@ -496,60 +491,82 @@ const ReceiptsPage = () => {
             id: 'actions',
             cell: ({ row }) => {
                 const entry = row.original;
+                const isLinked = !!entry.subscriptionCollection;
+                
                 return (
-                    <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-all">
+                    <div className="flex justify-end gap-1 opacity-0 group-hover:opacity-100 transition-all">
                         {entry.status === 'POSTED' ? (
                             <Button
                                 size="icon"
                                 variant="ghost"
                                 onClick={() => handleEdit(entry, true)}
-                                className="w-9 h-9 text-slate-600 hover:text-slate-700 hover:bg-slate-100 rounded-xl transition-all"
+                                className="w-8 h-8 text-muted-foreground hover:text-foreground/80 hover:bg-accent dark:hover:bg-slate-800 rounded-xl transition-all"
                                 title="عرض فقط"
                             >
-                                <Eye size={16} />
+                                <APP_ICONS.ACTIONS.VIEW size={14} />
                             </Button>
                         ) : (
+                            <WithPermission permission="RECEIPT_EDIT">
+                                <Button
+                                    size="icon"
+                                    variant="ghost"
+                                    onClick={() => handleEdit(entry, false)}
+                                    className="w-8 h-8 text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/30 rounded-xl transition-all"
+                                    title="تعديل"
+                                >
+                                    <APP_ICONS.ACTIONS.EDIT size={14} />
+                                </Button>
+                            </WithPermission>
+                        )}
+ 
+                        <WithPermission permission="RECEIPT_PRINT">
                             <Button
                                 size="icon"
                                 variant="ghost"
-                                onClick={() => handleEdit(entry, false)}
-                                className="w-9 h-9 text-blue-600 hover:text-blue-700 hover:bg-blue-100 rounded-xl transition-all"
-                                title="تعديل"
+                                onClick={() => handleExportSingle(entry)}
+                                className="w-8 h-8 text-rose-600 dark:text-rose-400 hover:text-rose-700 dark:hover:text-rose-300 hover:bg-rose-50 dark:hover:bg-rose-900/30 rounded-xl transition-all"
+                                title="تصدير PDF"
                             >
-                                <Edit3 size={16} />
+                                <APP_ICONS.ACTIONS.EXPORT size={14} />
+                            </Button>
+                        </WithPermission>
+ 
+                        {entry.subscriptionCollectionId && (
+                            <Button
+                                size="icon"
+                                variant="ghost"
+                                onClick={(e) => { e.stopPropagation(); router.push(`/subscriptions/collect?id=${entry.subscriptionCollectionId}`); }}
+                                className="w-8 h-8 text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 rounded-xl transition-all"
+                                title="الانتقال للتحصيل"
+                            >
+                                <APP_ICONS.MODULES.COLLECT size={14} />
                             </Button>
                         )}
-
-                        <Button
-                            size="icon"
-                            variant="ghost"
-                            onClick={() => handleExportSingle(entry)}
-                            className="w-9 h-9 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 rounded-xl transition-all"
-                            title="تصدير PDF"
-                        >
-                            <Download size={16} />
-                        </Button>
-
+ 
                         {entry.status === 'POSTED' ? (
-                            <Button
-                                size="icon"
-                                variant="ghost"
-                                onClick={() => handleUnpost(entry.id)}
-                                className="w-9 h-9 text-amber-600 hover:text-amber-700 hover:bg-amber-100 rounded-xl transition-all"
-                                title="إلغاء الترحيل (مدير فقط)"
-                            >
-                                <RotateCcw size={16} />
-                            </Button>
+                            <WithPermission permission="RECEIPT_UNPOST">
+                                <Button
+                                    size="icon"
+                                    variant="ghost"
+                                    onClick={() => handleUnpost(entry.id)}
+                                    className="w-8 h-8 text-amber-600 dark:text-amber-400 hover:text-amber-700 dark:hover:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-900/30 rounded-xl transition-all"
+                                    title="إلغاء الترحيل (مدير فقط)"
+                                >
+                                    <APP_ICONS.ACTIONS.UNDO size={14} />
+                                </Button>
+                            </WithPermission>
                         ) : (
-                            <Button
-                                size="icon"
-                                variant="ghost"
-                                onClick={() => handleDelete(entry.id)}
-                                className="w-9 h-9 text-rose-500 hover:text-rose-600 hover:bg-rose-100 rounded-xl transition-all"
-                                title="حذف"
-                            >
-                                <Trash2 size={16} />
-                            </Button>
+                            <WithPermission permission="RECEIPT_DELETE">
+                                <Button
+                                    size="icon"
+                                    variant="ghost"
+                                    onClick={() => handleDelete(entry.id)}
+                                    className="w-8 h-8 text-rose-500 dark:text-rose-400 hover:text-rose-600 dark:hover:text-rose-300 hover:bg-rose-100 dark:hover:bg-rose-900/30 rounded-xl transition-all"
+                                    title="حذف"
+                                >
+                                    <APP_ICONS.ACTIONS.DELETE size={14} />
+                                </Button>
+                            </WithPermission>
                         )}
                     </div>
                 );
@@ -562,229 +579,290 @@ const ReceiptsPage = () => {
     };
 
     return (
-        <div className="max-w-7xl mx-auto space-y-6 animate-in fade-in duration-500">
-            <PageHeader
-                icon={TrendingUp}
-                title={view === 'list' ? 'سندات القبض (Recibos)' : 'تحرير سند قبض'}
-                description="إدارة كافة المقبوضات المالية والتحقق من القيد المزدوج"
-                iconClassName="bg-emerald-600 shadow-emerald-200"
-            >
-                {view === 'form' && editingId && canExport && (
-                    <Button
-                        onClick={() => {
-                            const entry = entries.find(e => e.id === editingId);
-                            if (entry) handleExportSingle(entry);
-                        }}
-                        variant="outline"
-                        className="flex items-center gap-2 rounded-2xl font-bold border-emerald-200 text-emerald-600 hover:bg-emerald-50 transition-all"
-                    >
-                        <Download size={20} className="ml-1" />
-                        PDF
-                    </Button>
-                )}
-                {view === 'list' ? (
-                    canCreate && (
-                        <Button onClick={handleAddNew} className="bg-emerald-600 hover:bg-emerald-700 shadow-lg shadow-emerald-200 hover:shadow-emerald-300 transition-all hover:-translate-y-0.5">
-                            <Plus size={20} className="ml-2" />
-                            إضافة سند قبض
+        <ProtectedRoute permission="RECEIPT_VIEW">
+            <div className="max-w-7xl mx-auto space-y-6 animate-in fade-in duration-500">
+                <PageHeader
+                    icon={APP_ICONS.MODULES.RECEIPTS}
+                    title={view === 'list' ? 'سندات القبض (Recibos)' : (isViewOnly ? 'تفاصيل سند قبض' : 'تحرير سند قبض')}
+                    description="إدارة كافة المقبوضات المالية والتحقق من القيد المزدوج"
+                >
+                    {view === 'form' && editingId && (
+                        <Button
+                            onClick={() => {
+                                const entry = entries.find(e => e.id === editingId);
+                                if (entry) handleExportSingle(entry);
+                            }}
+                            variant="outline"
+                            className={cn("flex items-center gap-2 rounded-2xl font-bold border-opacity-20", theme.accent.replace('text-', 'border-'), theme.accent, theme.muted.replace('bg-', 'hover:bg-'), "transition-all")}
+                        >
+                            <APP_ICONS.ACTIONS.EXPORT size={20} className="ml-1" />
+                            PDF
                         </Button>
-                    )
+                    )}
+                    {view === 'list' ? (
+                        <WithPermission permission="RECEIPT_CREATE">
+                            <CustomButton onClick={handleAddNew} variant="primary">
+                                <APP_ICONS.ACTIONS.ADD size={20} className="ml-2" />
+                                إضافة سند قبض
+                            </CustomButton>
+                        </WithPermission>
+                    ) : (
+                        <CustomButton onClick={() => setView('list')} variant="primary">
+                            <APP_ICONS.ACTIONS.CHEVRON_LEFT size={20} className="ml-2 rotate-180" />
+                            العودة
+                        </CustomButton>
+                    )}
+                </PageHeader>
+
+                {view === 'list' ? (
+                    <DataTable
+                        columns={columns}
+                        data={entries}
+                        compact={true}
+                        searchPlaceholder="بحث..."
+                        exportFileName="receipts-list"
+                        noDataMessage={
+                            <div className="flex flex-col items-center gap-3">
+                                <IconBox icon={APP_ICONS.ACTIONS.LIST} className={cn("bg-accent text-muted-foreground/60 transition-colors", theme.muted.replace('bg-', 'group-hover:bg-'), theme.accent.replace('text-', 'group-hover:text-'))} boxSize="w-16 h-16" iconSize={32} />
+                                <p className="text-muted-foreground/60 font-bold">لا توجد سندات مسجلة حالياً</p>
+                            </div>
+                        }
+                    />
                 ) : (
-                    <Button onClick={() => setView('list')} className="bg-emerald-600 hover:bg-emerald-700 shadow-lg shadow-emerald-200">
-                        <ChevronLeft size={20} className="ml-2 rotate-180" />
-                        العودة
-                    </Button>
-                )}
-            </PageHeader>
+                    <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+                        <div className="lg:col-span-3 bg-card p-8 rounded-[2rem] border border-input shadow-xl space-y-8">
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                <div className="space-y-2">
+                                    <label className="text-xs font-black text-muted-foreground/80 uppercase mr-1">الفرع</label>
+                                    <Select disabled={isViewOnly} value={branchId} onValueChange={setBranchId}>
+                                        <SelectTrigger className="h-12 bg-muted/50 rounded-xl border-border"><SelectValue /></SelectTrigger>
+                                        <SelectContent>{branches.map(b => <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>)}</SelectContent>
+                                    </Select>
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-xs font-black text-muted-foreground/80 uppercase mr-1">التاريخ</label>
+                                    <Input type="date" disabled={isViewOnly} value={date} onChange={(e) => setDate(e.target.value)} className="h-12 bg-muted/50 rounded-xl" />
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-xs font-black text-muted-foreground/80 uppercase mr-1">البيان</label>
+                                    <Input disabled={isViewOnly} value={description} onChange={(e) => setDescription(e.target.value)} className="h-12 bg-muted/50 rounded-xl" />
+                                </div>
+                            </div>
 
-            {view === 'list' ? (
-                <DataTable columns={columns} data={entries} searchPlaceholder="بحث..." headerClassName="bg-emerald-600" />
-            ) : (
-                <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-                    <div className="lg:col-span-3 bg-white p-8 rounded-[2rem] border border-slate-200 shadow-xl space-y-8">
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                            <div className="space-y-2">
-                                <label className="text-xs font-black text-slate-500 uppercase mr-1">الفرع</label>
-                                <Select disabled={isViewOnly} value={branchId} onValueChange={setBranchId}>
-                                    <SelectTrigger className="h-12 bg-slate-50 rounded-xl border-slate-100"><SelectValue /></SelectTrigger>
-                                    <SelectContent>{branches.map(b => <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>)}</SelectContent>
-                                </Select>
-                            </div>
-                            <div className="space-y-2">
-                                <label className="text-xs font-black text-slate-500 uppercase mr-1">التاريخ</label>
-                                <Input type="date" disabled={isViewOnly} value={date} onChange={(e) => setDate(e.target.value)} className="h-12 bg-slate-50 rounded-xl" />
-                            </div>
-                            <div className="space-y-2">
-                                <label className="text-xs font-black text-slate-500 uppercase mr-1">البيان</label>
-                                <Input disabled={isViewOnly} value={description} onChange={(e) => setDescription(e.target.value)} className="h-12 bg-slate-50 rounded-xl" />
-                            </div>
-                        </div>
-
-                        <Table dir="rtl">
-                            <TableHeader>
-                                <TableRow className="bg-emerald-600 hover:bg-emerald-700 border-none">
-                                    <TableHead className="text-right text-white font-black">الحساب</TableHead>
-                                    <TableHead className="text-center w-32 text-white font-black">مدين (+)</TableHead>
-                                    <TableHead className="text-center w-32 text-white font-black">دائن (-)</TableHead>
-                                    <TableHead className="text-center w-20 text-white font-black">العملة</TableHead>
-                                    <TableHead className="text-center w-32 text-white font-black">سعر الصرف</TableHead>
-                                    <TableHead className="w-10 text-white font-black"></TableHead>
-                                </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                                {lines.map(line => (
-                                    <TableRow key={line.tempId} className="group">
-                                        <TableCell>
-                                            <SearchableAccountSelect
-                                                disabled={isViewOnly}
-                                                accounts={leafAccounts}
-                                                value={line.accountId}
-                                                onChange={(v: string) => updateLine(line.tempId, 'accountId', v)}
-                                                onAddNew={() => setIsAccountModalOpen(true)}
-                                            />
-                                        </TableCell>
-                                        <TableCell><Input type="number" step="0.01" disabled={isViewOnly} value={line.debit || ''} onChange={(e) => updateLine(line.tempId, 'debit', Number(e.target.value))} className="text-center font-bold" /></TableCell>
-                                        <TableCell><Input type="number" step="0.01" disabled={isViewOnly} value={line.credit || ''} onChange={(e) => updateLine(line.tempId, 'credit', Number(e.target.value))} className="text-center font-bold" /></TableCell>
-                                        <TableCell className="text-center font-black text-xs text-slate-500">{line.currencyCode}</TableCell>
-                                        <TableCell><Input type="number" step="0.000001" disabled={isViewOnly || (accounts.find(a => a.id === line.accountId)?.currency.isBase)} value={line.exchangeRate || ''} onChange={(e) => updateLine(line.tempId, 'exchangeRate', Number(e.target.value))} className="text-center font-mono text-xs" /></TableCell>
-                                        <TableCell>
-                                            <Button
-                                                size="icon"
-                                                variant="ghost"
-                                                disabled={isViewOnly || lines.length <= 2}
-                                                onClick={() => setLines(lines.filter(l => l.tempId !== line.tempId))}
-                                                className="opacity-0 group-hover:opacity-100 text-rose-500 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all"
-                                            >
-                                                <Trash2 size={14} />
-                                            </Button>
-                                        </TableCell>
+                            <Table dir="rtl">
+                                <TableHeader>
+                                    <TableRow className={cn("hover:bg-opacity-90 border-none transition-all", theme.tableHeader)}>
+                                        <TableHead className="text-right text-white font-black">الحساب</TableHead>
+                                        <TableHead className="text-center w-32 text-white font-black">مدين (+)</TableHead>
+                                        <TableHead className="text-center w-32 text-white font-black">دائن (-)</TableHead>
+                                        <TableHead className="text-center w-20 text-white font-black">العملة</TableHead>
+                                        <TableHead className="text-center w-32 text-white font-black">سعر الصرف</TableHead>
+                                        <TableHead className="w-10 text-white font-black"></TableHead>
                                     </TableRow>
-                                ))}
-                            </TableBody>
-                        </Table>
-                        <Button variant="ghost" onClick={addLine} disabled={isViewOnly} className="text-green-600 font-bold"><Plus size={16} className="ml-1" /> إضافة سطر</Button>
-
-                        {/* Subscription Members List (if applicable) */}
-                        {subsMembers.length > 0 && (
-                            <div id="members-list-section" className="mt-8 p-6 bg-blue-50/50 rounded-3xl border border-blue-100 animate-in fade-in slide-in-from-top-4 duration-500">
-                                <div className="flex items-center gap-3 mb-4">
-                                    <div className="p-2 bg-blue-600 text-white rounded-lg">
-                                        <Users size={16} />
-                                    </div>
-                                    <h3 className="font-black text-slate-800 tracking-tight">قائمة الأعضاء المسددين في هذا السند</h3>
-                                    <span className="text-[10px] bg-blue-600 text-white px-2 py-0.5 rounded-full font-bold mr-auto">{subsMembers.length} عضو</span>
-                                </div>
-                                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-                                    {subsMembers.map((m, idx) => (
-                                        <div key={`${m.id}-${idx}`} className="bg-white p-3 rounded-xl border border-blue-100 flex items-center gap-2 group hover:border-blue-300 transition-all">
-                                            <div className="w-8 h-8 rounded-lg bg-slate-50 flex items-center justify-center text-blue-600 group-hover:bg-blue-600 group-hover:text-white transition-all overflow-hidden shrink-0">
-                                                <span className="text-[9px] font-black">{m.totalPaid || 0}</span>
-                                            </div>
-                                            <span className="text-xs font-bold text-slate-700 truncate">{m.name}</span>
-                                        </div>
+                                </TableHeader>
+                                <TableBody>
+                                    {lines.map(line => (
+                                        <TableRow key={line.tempId} className="group">
+                                            <TableCell>
+                                                <SearchableAccountSelect
+                                                    disabled={isViewOnly}
+                                                    accounts={leafAccounts}
+                                                    value={line.accountId}
+                                                    onChange={(v: string) => updateLine(line.tempId, 'accountId', v)}
+                                                    onAddNew={() => seIsActionModalOpen(true)}
+                                                />
+                                            </TableCell>
+                                            <TableCell><Input type="number" step="0.01" disabled={isViewOnly} value={line.debit || ''} onChange={(e) => updateLine(line.tempId, 'debit', Number(e.target.value))} className={cn("text-center font-bold focus-visible:ring-2", theme.accent.replace('text-', 'focus-visible:ring-'))} /></TableCell>
+                                            <TableCell><Input type="number" step="0.01" disabled={isViewOnly} value={line.credit || ''} onChange={(e) => updateLine(line.tempId, 'credit', Number(e.target.value))} className={cn("text-center font-bold focus-visible ring-2", theme.accent.replace('text-', 'focus-visible:ring-'))} /></TableCell>
+                                            <TableCell className="text-center font-black text-xs text-muted-foreground/80">{line.currencyCode}</TableCell>
+                                            <TableCell><Input type="number" step="0.000001" disabled={isViewOnly || (accounts.find(a => a.id === line.accountId)?.currency.isBase)} value={line.exchangeRate || ''} onChange={(e) => updateLine(line.tempId, 'exchangeRate', Number(e.target.value))} className="text-center font-mono text-xs" /></TableCell>
+                                            <TableCell>
+                                                <Button
+                                                    size="icon"
+                                                    variant="ghost"
+                                                    disabled={isViewOnly || lines.length <= 2}
+                                                    onClick={() => setLines(lines.filter(l => l.tempId !== line.tempId))}
+                                                    className="opacity-0 group-hover:opacity-100 text-rose-500 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all"
+                                                >
+                                                    <APP_ICONS.ACTIONS.DELETE size={14} />
+                                                </Button>
+                                            </TableCell>
+                                        </TableRow>
                                     ))}
-                                </div>
-                            </div>
-                        )}
-                    </div>
+                                </TableBody>
+                            </Table>
+                            <Button variant="ghost" onClick={addLine} disabled={isViewOnly} className={cn("font-bold", theme.accent)}><APP_ICONS.ACTIONS.ADD size={16} className="ml-1" /> إضافة سطر</Button>
 
-                    <div className="space-y-6">
-                        <div className="bg-white p-6 rounded-[2rem] border border-slate-200 shadow-lg">
-                            <AttachmentUpload
-                                attachments={attachments}
-                                onChange={setAttachments}
-                                disabled={isViewOnly}
-                                label="المرفقات والوثائق"
-                            />
-                        </div>
-                        <div className="bg-white p-6 rounded-[2rem] border border-slate-200 shadow-lg space-y-4">
-                            <div className="flex justify-between font-bold"><span>المدين:</span> <span>{totalBaseDebit.toLocaleString()}</span></div>
-                            <div className="flex justify-between font-bold"><span>الدائن:</span> <span>{totalBaseCredit.toLocaleString()}</span></div>
-                            <div className={cn("p-4 rounded-xl text-center font-black", isBalanced ? "bg-emerald-50 text-emerald-600" : "bg-rose-50 text-rose-600")}>
-                                الفرق: {(totalBaseDebit - totalBaseCredit).toLocaleString()}
-                            </div>
-
+                            {/* Subscription Members List (if applicable) */}
                             {subsMembers.length > 0 && (
-                                <div className="mt-4 p-4 bg-blue-50/50 rounded-2xl border border-blue-100 flex flex-col gap-3">
-                                    <div className="flex justify-between items-center px-1">
-                                        <span className="text-xs font-black text-blue-800 uppercase">إجمالي المشتركين:</span>
-                                        <span className="bg-blue-600 text-white px-2 py-0.5 rounded-full text-[10px] font-black">{subsMembers.length}</span>
+                                <div id="members-list-section" className="mt-8 p-6 bg-blue-50/50 rounded-3xl border border-blue-100 animate-in fade-in slide-in-from-top-4 duration-500">
+                                    <div className="flex items-center gap-3 mb-4">
+                                        <div className={cn("p-2 text-white rounded-lg", theme.primary)}>
+                                            <APP_ICONS.MODULES.MEMBERS size={16} />
+                                        </div>
+                                        <h3 className="font-black text-foreground/90 tracking-tight">قائمة الأعضاء المسددين في هذا السند</h3>
+                                        <span className={cn("text-[10px] text-white px-2 py-0.5 rounded-full font-bold mr-auto", theme.primary)}>{subsMembers.length} عضو</span>
                                     </div>
-                                    <Button
-                                        variant="outline"
-                                        size="sm"
-                                        onClick={() => {
-                                            const el = document.getElementById('members-list-section');
-                                            if (el) el.scrollIntoView({ behavior: 'smooth' });
-                                        }}
-                                        className="w-full h-10 rounded-xl border-blue-200 text-blue-700 hover:bg-white gap-2 font-bold"
-                                    >
-                                        <Users size={14} />
-                                        عرض قائمة الأسماء
-                                    </Button>
+                                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                                        {subsMembers.map((m, idx) => (
+                                            <div key={`${m.id}-${idx}`} className={cn("bg-card p-3 rounded-xl border flex items-center gap-2 group transition-all", theme.accent.replace('text-', 'hover:border-').replace('600', '100'))}>
+                                                <div className={cn("w-8 h-8 rounded-lg bg-muted/50 flex items-center justify-center transition-all overflow-hidden shrink-0", theme.accent.replace('text-', 'group-hover:bg-').replace('600', '600'), "group-hover:text-white")}>
+                                                    <span className="text-[9px] font-black">{m.totalPaid || 0}</span>
+                                                </div>
+                                                <span className="text-xs font-bold text-foreground/80 truncate">{m.name}</span>
+                                            </div>
+                                        ))}
+                                    </div>
                                 </div>
                             )}
-                            {!isViewOnly && (
-                                <>
-                                    <Button
-                                        onClick={() => handleSave(false)}
-                                        disabled={saving || !description || lines.some(l => !l.accountId) || !hasAmounts}
-                                        variant="outline"
-                                        className="w-full h-12 rounded-xl"
-                                    >
-                                        حفظ كمسودة
-                                    </Button>
-                                    <Button
-                                        onClick={() => handleSave(true)}
-                                        disabled={!isBalanced || saving || !description || lines.some(l => !l.accountId) || !hasAmounts}
-                                        className="w-full h-14 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl shadow-lg shadow-emerald-200"
-                                    >
-                                        ترحيل السند
-                                    </Button>
-                                </>
-                            )}
+                        </div>
+
+                        <div className="space-y-6">
+                            <div className="bg-card p-6 rounded-[2rem] border border-input shadow-lg">
+                                <AttachmentUpload
+                                    attachments={attachments}
+                                    onChange={setAttachments}
+                                    disabled={isViewOnly}
+                                    label="المرفقات والوثائق"
+                                />
+                            </div>
+                            <div className="bg-card p-6 rounded-[2rem] border border-input shadow-lg space-y-4">
+                                <div className="flex justify-between font-bold"><span>المدين:</span> <span>{totalBaseDebit.toLocaleString()}</span></div>
+                                <div className="flex justify-between font-bold"><span>الدائن:</span> <span>{totalBaseCredit.toLocaleString()}</span></div>
+                                <div className={cn("p-4 rounded-xl text-center font-black", isBalanced ? cn(theme.muted, theme.accent) : "bg-rose-50 text-rose-600")}>
+                                    الفرق: {(totalBaseDebit - totalBaseCredit).toLocaleString()}
+                                </div>
+
+                                {subsMembers.length > 0 && (
+                                    <div className={cn("mt-4 p-4 rounded-2xl border flex flex-col gap-3", theme.muted.replace('bg-', 'bg-').replace('50', '50/50'), theme.border)}>
+                                        <div className="flex justify-between items-center px-1">
+                                            <span className={cn("text-xs font-black uppercase", theme.accent)}>إجمالي المشتركين:</span>
+                                            <span className={cn("text-white px-2 py-0.5 rounded-full text-[10px] font-black", theme.primary)}>{subsMembers.length}</span>
+                                        </div>
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={() => {
+                                                const el = document.getElementById('members-list-section');
+                                                if (el) el.scrollIntoView({ behavior: 'smooth' });
+                                            }}
+                                            className={cn("w-full h-10 rounded-xl gap-2 font-bold hover:bg-card", theme.border.replace('border-', 'border-').replace('100', '200'), theme.accent.replace('text-', 'text-').replace('600', '700'))}
+                                        >
+                                            <APP_ICONS.MODULES.MEMBERS size={14} />
+                                            عرض قائمة الأسماء
+                                        </Button>
+                                    </div>
+                                )}
+                                {!isViewOnly && (
+                                    <>
+                                        <WithPermission permission="RECEIPT_CREATE">
+                                            <Button
+                                                onClick={() => handleSave(false)}
+                                                disabled={saving || !description || lines.some(l => !l.accountId) || !hasAmounts}
+                                                variant="outline"
+                                                className="w-full h-12 rounded-xl"
+                                            >
+                                                حفظ كمسودة
+                                            </Button>
+                                        </WithPermission>
+                                        <WithPermission permission="RECEIPT_POST">
+                                            <CustomButton
+                                                onClick={() => handleSave(true)}
+                                                disabled={!isBalanced || saving || !description || lines.some(l => !l.accountId) || !hasAmounts}
+                                                className="w-full h-14"
+                                            >
+                                                ترحيل السند
+                                            </CustomButton>
+                                        </WithPermission>
+                                    </>
+                                )}
+                                {isViewOnly && status === 'POSTED' && !entries.find(e => e.id === editingId)?.subscriptionCollection && (
+                                    <WithPermission permission="RECEIPT_UNPOST">
+                                        <Button
+                                            onClick={() => handleUnpost(editingId!)}
+                                            variant="outline"
+                                            className={cn("w-full h-14 rounded-2xl font-black border-amber-200 text-amber-600 hover:bg-amber-50 shadow-sm transition-all")}
+                                        >
+                                            <APP_ICONS.ACTIONS.UNDO size={20} className="ml-2" />
+                                            إلغاء ترحيل السند
+                                        </Button>
+                                    </WithPermission>
+                                )}
+                                {entries.find(e => e.id === editingId)?.subscriptionCollection && (
+                                    <div className="p-4 bg-muted/30 border border-dashed rounded-2xl text-center space-y-2">
+                                        <div className="flex justify-center text-muted-foreground/40">
+                                            <APP_ICONS.ACTIONS.LOCK size={24} />
+                                        </div>
+                                        <p className="text-[10px] font-bold text-muted-foreground/60 leading-relaxed mb-3">
+                                            هذا السند مرتبط بعملية تحصيل اشتراكات.
+                                            <br />
+                                            للتعديل أو الحذف، يرجى التوجه لصفحة التحصيل.
+                                        </p>
+                                        <Button
+                                            variant="secondary"
+                                            size="sm"
+                                            onClick={() => router.push(`/subscriptions/collect?id=${entries.find(e => e.id === editingId)?.subscriptionCollection.id}`)}
+                                            className="w-full h-10 rounded-xl gap-2 font-bold"
+                                        >
+                                            <APP_ICONS.MODULES.COLLECT size={14} />
+                                            الانتقال للتحصيل
+                                        </Button>
+                                    </div>
+                                )}
+                            </div>
                         </div>
                     </div>
-                </div>
-            )}
-            {isAccountModalOpen && (
-                <AccountModal
-                    onClose={() => setIsAccountModalOpen(false)}
-                    onSave={fetchMeta}
-                    accounts={accounts}
-                    currencies={currencies}
-                    branches={branches}
+                )}
+                {isActionModalOpen && (
+                    <ActionModal
+                        isOpen={true}
+                        onClose={() => seIsActionModalOpen(false)}
+                        title="إضافة حساب مالي"
+                        description="يرجى ملء تفاصيل الحساب المالي بدقة."
+                        icon={APP_ICONS.MODULES.ACCOUNTS}
+                        maxWidth="max-w-2xl"
+                        preventClose={true}
+                        showCloseButton={false}
+                    >
+                        <AccountForm
+                            accounts={accounts}
+                            currencies={currencies}
+                            branches={branches}
+                            onClose={() => seIsActionModalOpen(false)}
+                            onSave={fetchMeta}
+                        />
+                    </ActionModal>
+                )}
+
+                {/* Professional Confirmation Dialog */}
+                <ConfirmModal
+                    open={confirmOpen}
+                    onOpenChange={setConfirmOpen}
+                    onConfirm={executeConfirm}
+                    title={confirmConfig.title}
+                    description={confirmConfig.description}
+                    confirmLabel={confirmConfig.label}
+                    variant={confirmConfig.variant}
+                    icon={confirmConfig.icon}
+                    loading={confirmLoading}
                 />
-            )}
 
-            {/* Professional Confirmation Dialog */}
-            <ConfirmDialog
-                open={confirmOpen}
-                onOpenChange={setConfirmOpen}
-                onConfirm={executeConfirm}
-                title={confirmConfig.title}
-                description={confirmConfig.description}
-                confirmLabel={confirmConfig.label}
-                variant={confirmConfig.variant}
-                icon={confirmConfig.icon}
-                loading={confirmLoading}
-            />
-
-            <ViewAttachmentsModal
-                open={!!viewAttachmentsEntry}
-                onOpenChange={(open) => !open && setViewAttachmentsEntry(null)}
-                attachments={viewAttachmentsEntry?.attachments || []}
-                title={`مرفقات السند رقم: ${viewAttachmentsEntry?.entryNumber}`}
-            />
-        </div>
+                <ViewAttachmentsModal
+                    open={!!viewAttachmentsEntry}
+                    onOpenChange={(open) => !open && setViewAttachmentsEntry(null)}
+                    attachments={viewAttachmentsEntry?.attachments || []}
+                    title={`مرفقات السند رقم: ${viewAttachmentsEntry?.entryNumber}`}
+                />
+            </div>
+        </ProtectedRoute>
     );
 };
 
 const ReceiptsPageWrapper = () => (
     <Suspense fallback={
         <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4">
-            <Loader2 className="w-12 h-12 text-emerald-600 animate-spin" />
-            <p className="text-slate-500 font-bold animate-pulse">جاري التحميل...</p>
+            <APP_ICONS.STATE.LOADING className="w-12 h-12 animate-spin text-emerald-600" />
+            <p className="text-muted-foreground/80 font-bold animate-pulse">جاري التحميل...</p>
         </div>
     }>
         <ReceiptsPage />

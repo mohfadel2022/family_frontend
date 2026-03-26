@@ -41,14 +41,14 @@ export const TotalSummary = ({
                 />
                 <div>
                     <h2 className="text-ml font-black">{title}</h2>
-                    <p className="text-slate-400 text-[10px] uppercase font-bold tracking-widest mt-1">{subtitle}</p>
+                    <p className="text-muted-foreground/60 text-[10px] uppercase font-bold tracking-widest mt-1">{subtitle}</p>
                 </div>
             </div>
             <div className="text-center md:text-left">
                 <h2 className={cn("text-2xl font-black font-mono leading-none", accentColorClassName)}>
                     {typeof amount === 'number' ? amount.toLocaleString() : amount}
                 </h2>
-                <p className="text-slate-500 font-bold uppercase text-[10px] mt-1 tracking-widest leading-none">
+                <p className="text-muted-foreground/80 font-bold uppercase text-[10px] mt-1 tracking-widest leading-none">
                     {amountLabel}
                 </p>
             </div>

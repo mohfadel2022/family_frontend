@@ -1,12 +1,8 @@
 "use client";
 
 import React, { useState } from 'react';
-import {
-    Dialog,
-    DialogContent,
-    DialogHeader,
-    DialogTitle,
-} from '@/components/ui/dialog';
+import { ActionModal } from '@/components/ui/ActionModal';
+import { APP_ICONS } from '@/lib/icons';
 import { FileText, ImageIcon, Film, Download, ExternalLink } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { API_URL } from '@/lib/api';
@@ -43,89 +39,109 @@ export const ViewAttachmentsModal = ({ open, onOpenChange, attachments, title = 
 
     return (
         <>
-            <Dialog open={open} onOpenChange={onOpenChange}>
-                <DialogContent className="max-w-md" dir="rtl">
-                    <DialogHeader>
-                        <DialogTitle className="font-black text-xl text-slate-800">{title}</DialogTitle>
-                    </DialogHeader>
+            <ActionModal
+                isOpen={open}
+                onClose={() => onOpenChange(false)}
+                title={title}
+                description="عرض وتحميل الملفات المرفقة بالسند"
+                icon={APP_ICONS.ACTIONS.ATTACHMENT}
+                iconClassName="bg-blue-600 text-white shadow-blue-100"
+                maxWidth="max-w-md"
+            >
+                <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-1 custom-scrollbar">
+                    {attachments.length === 0 ? (
+                        <div className="text-center py-12 px-4">
+                            <div className="w-16 h-16 bg-muted/50 rounded-2xl flex items-center justify-center mx-auto mb-4 text-muted-foreground/40">
+                                <APP_ICONS.ACTIONS.ATTACHMENT size={32} />
+                            </div>
+                            <p className="text-muted-foreground/60 font-black">لا توجد مرفقات لهذا السند</p>
+                        </div>
+                    ) : (
+                        attachments.map((file, idx) => {
+                            const Icon = getFileIcon(file.fileType) as any;
+                            const fileUrl = `${API_URL.replace('/api', '')}${file.fileUrl}`;
+                            const previewable = isPreviewable(file.fileType);
 
-                    <div className="mt-4 space-y-3 max-h-[60vh] overflow-y-auto pr-2">
-                        {attachments.length === 0 ? (
-                            <p className="text-center text-slate-400 font-bold py-8">لا توجد مرفقات</p>
-                        ) : (
-                            attachments.map((file, idx) => {
-                                const Icon = getFileIcon(file.fileType);
-                                const fileUrl = `${API_URL.replace('/api', '')}${file.fileUrl}`;
-                                const previewable = isPreviewable(file.fileType);
-
-                                return (
-                                    <div key={idx} className="group relative flex items-center gap-3 p-3 rounded-2xl bg-slate-50 border border-slate-100 hover:border-blue-200 transition-all">
-                                        <div className="w-10 h-10 rounded-xl bg-white flex items-center justify-center text-blue-500 shadow-sm shrink-0">
-                                            <Icon size={20} />
-                                        </div>
-                                        <div className="flex-1 min-w-0">
-                                            <p className="text-xs font-black text-slate-800 truncate" title={file.fileName}>
-                                                {file.fileName}
-                                            </p>
-                                            <p className="text-[10px] text-slate-400 font-bold">
-                                                {(file.fileSize ? (file.fileSize / 1024).toFixed(1) : 0)} KB • {file.fileType || 'Unkown'}
-                                            </p>
-                                        </div>
-                                        <div className="flex items-center gap-1 shrink-0">
-                                            {previewable ? (
-                                                <Button
-                                                    size="sm"
-                                                    variant="ghost"
-                                                    className="h-8 px-2 text-blue-600 hover:bg-blue-100 hover:text-blue-700 font-bold text-xs rounded-lg"
-                                                    onClick={() => setSelectedAttachment(file)}
-                                                >
-                                                    <ExternalLink size={14} className="mr-1" />
-                                                    عرض
-                                                </Button>
-                                            ) : (
-                                                <a
-                                                    href={fileUrl}
-                                                    download
-                                                    target="_blank"
-                                                    rel="noopener noreferrer"
-                                                    className="h-8 px-2 inline-flex items-center justify-center text-slate-600 hover:bg-slate-200 font-bold text-xs rounded-lg transition-all"
-                                                >
-                                                    <Download size={14} className="mr-1" />
-                                                    تحميل
-                                                </a>
-                                            )}
+                            return (
+                                <div key={idx} className="group relative flex items-center gap-4 p-4 rounded-2xl bg-muted/30 border border-border/50 hover:border-blue-200 hover:bg-blue-50/30 transition-all">
+                                    <div className="w-12 h-12 rounded-xl bg-card border border-border/50 flex items-center justify-center text-blue-600 shadow-sm shrink-0 group-hover:scale-105 transition-transform">
+                                        <Icon size={24} />
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                        <p className="text-sm font-black text-foreground/90 truncate mb-1" title={file.fileName}>
+                                            {file.fileName}
+                                        </p>
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-[10px] bg-muted px-1.5 py-0.5 rounded text-muted-foreground/70 font-bold uppercase tracking-wider">
+                                                {file.fileType?.split('/')[1] || 'FILE'}
+                                            </span>
+                                            <span className="text-[10px] text-muted-foreground/60 font-bold">
+                                                {(file.fileSize ? (file.fileSize / 1024).toFixed(1) : 0)} KB
+                                            </span>
                                         </div>
                                     </div>
-                                );
-                            })
-                        )}
-                    </div>
-                </DialogContent>
-            </Dialog>
+                                    <div className="flex items-center gap-2 shrink-0">
+                                        {previewable ? (
+                                            <Button
+                                                size="sm"
+                                                variant="outline"
+                                                className="h-10 px-4 border-blue-100 text-blue-600 hover:bg-blue-600 hover:text-white font-black text-xs rounded-xl shadow-sm transition-all flex items-center gap-2"
+                                                onClick={() => setSelectedAttachment(file)}
+                                            >
+                                                <ExternalLink size={14} />
+                                                عرض
+                                            </Button>
+                                        ) : (
+                                            <a
+                                                href={fileUrl}
+                                                download
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="h-10 px-4 inline-flex items-center justify-center bg-card border border-border/50 text-muted-foreground hover:bg-slate-900 hover:text-white font-black text-xs rounded-xl shadow-sm transition-all gap-2"
+                                            >
+                                                <Download size={14} />
+                                                تحميل
+                                            </a>
+                                        )}
+                                    </div>
+                                </div>
+                            );
+                        })
+                    )}
+                </div>
+            </ActionModal>
 
-            <Dialog open={!!selectedAttachment} onOpenChange={(open) => !open && setSelectedAttachment(null)}>
-                <DialogContent className="max-w-4xl h-[85vh] flex flex-col p-2" dir="rtl">
-                    <DialogHeader className="px-4 py-2 border-b border-slate-100 flex-none">
-                        <DialogTitle className="font-black text-lg text-slate-800 flex justify-between items-center w-full pr-6">
-                            <span className="truncate">{selectedAttachment?.fileName}</span>
-                            <a
-                                href={`${API_URL.replace('/api', '')}${selectedAttachment?.fileUrl || ''}`}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-sm text-blue-600 hover:underline flex items-center gap-1 ml-4 shrink-0"
-                            >
-                                <ExternalLink size={14} />
-                                فتح في نافذة جديدة
-                            </a>
-                        </DialogTitle>
-                    </DialogHeader>
-                    <div className="flex-1 bg-slate-100/50 rounded-xl overflow-hidden relative mt-2">
+            <ActionModal
+                isOpen={!!selectedAttachment}
+                onClose={() => setSelectedAttachment(null)}
+                title={selectedAttachment?.fileName || 'معاينة الملف'}
+                description="معاينة المرفق المختار مباشرة"
+                icon={selectedAttachment ? (getFileIcon(selectedAttachment.fileType) as any) : APP_ICONS.ACTIONS.ATTACHMENT}
+                iconClassName="bg-indigo-600 text-white shadow-indigo-100"
+                maxWidth="max-w-5xl"
+            >
+                <div className="flex flex-col h-[70vh]">
+                    <div className="flex-none pb-4 flex justify-end">
+                        <a
+                            href={selectedAttachment ? `${API_URL.replace('/api', '')}${selectedAttachment.fileUrl}` : '#'}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-xs font-black text-blue-600 hover:bg-blue-50 px-3 py-2 rounded-lg flex items-center gap-2 transition-all"
+                        >
+                            <ExternalLink size={14} />
+                            فتح في نافذة جديدة
+                        </a>
+                    </div>
+                    
+                    <div className="flex-1 bg-muted/20 border border-border/50 rounded-[2rem] overflow-hidden relative shadow-inner">
                         {selectedAttachment && selectedAttachment.fileType?.startsWith('image/') ? (
-                            <img
-                                src={`${API_URL.replace('/api', '')}${selectedAttachment.fileUrl}`}
-                                alt={selectedAttachment.fileName}
-                                className="w-full h-full object-contain"
-                            />
+                            <div className="w-full h-full flex items-center justify-center p-4">
+                                <img
+                                    src={`${API_URL.replace('/api', '')}${selectedAttachment.fileUrl}`}
+                                    alt={selectedAttachment.fileName}
+                                    className="max-w-full max-h-full object-contain rounded-xl shadow-2xl"
+                                />
+                            </div>
                         ) : selectedAttachment && selectedAttachment.fileType === 'application/pdf' ? (
                             <iframe
                                 src={`${API_URL.replace('/api', '')}${selectedAttachment.fileUrl}`}
@@ -133,13 +149,14 @@ export const ViewAttachmentsModal = ({ open, onOpenChange, attachments, title = 
                                 title={selectedAttachment.fileName}
                             />
                         ) : (
-                            <div className="w-full h-full flex items-center justify-center text-slate-400 font-bold">
-                                لا يمكن معاينة هذا الملف
+                            <div className="w-full h-full flex flex-col items-center justify-center gap-4 text-muted-foreground/40 font-black">
+                                <APP_ICONS.ACTIONS.NOT_FOUND size={48} />
+                                لا يمكن معاينة هذا النوع من الملفات
                             </div>
                         )}
                     </div>
-                </DialogContent>
-            </Dialog>
+                </div>
+            </ActionModal>
         </>
     );
 };
