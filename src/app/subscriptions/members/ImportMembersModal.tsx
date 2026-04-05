@@ -12,7 +12,6 @@ import { APP_ICONS } from '@/lib/icons';
 import { SUB_BASE, META_BASE, getAuthHeader } from '@/lib/api';
 
 const API_BASE = SUB_BASE;
-const AUTH_HEADER = getAuthHeader();
 
 interface Props {
     onClose: () => void;
@@ -39,8 +38,8 @@ export const ImportMembersModal = ({ onClose, entities, onSuccess }: Props) => {
         const fetchMeta = async () => {
             try {
                 const [curRes, braRes] = await Promise.all([
-                    axios.get(`${META_BASE}/currencies`, AUTH_HEADER),
-                    axios.get(`${META_BASE}/branches`, AUTH_HEADER)
+                    axios.get(`${META_BASE}/currencies`, getAuthHeader()),
+                    axios.get(`${META_BASE}/branches`, getAuthHeader())
                 ]);
                 setAvailableCurrencies(curRes.data);
                 setAvailableBranches(braRes.data);
@@ -141,7 +140,7 @@ export const ImportMembersModal = ({ onClose, entities, onSuccess }: Props) => {
                 currencyId: defaultCurrency,
                 branchId: defaultBranch,
                 annualSubscription: 0
-            }, AUTH_HEADER);
+            }, getAuthHeader());
 
             toast.success(`تم إنشاء الجهة الجديدة: ${res.data.name}`);
 
@@ -191,7 +190,7 @@ export const ImportMembersModal = ({ onClose, entities, onSuccess }: Props) => {
                 filename: fileName,
                 rows: finalRows,
                 defaultYear: defaultYear
-            }, AUTH_HEADER);
+            }, getAuthHeader());
 
             setReport(res.data);
             setStep(3);
@@ -247,6 +246,8 @@ export const ImportMembersModal = ({ onClose, entities, onSuccess }: Props) => {
                                 </label>
                                 <Input
                                     type="number"
+                                    min={2010}
+                                    max={2100}
                                     value={defaultYear}
                                     onChange={(e) => setDefaultYear(Number(e.target.value))}
                                     className="h-12 bg-muted/30 font-black rounded-xl border-none text-center text-lg focus-visible:ring-indigo-500"

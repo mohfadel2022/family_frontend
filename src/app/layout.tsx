@@ -11,7 +11,7 @@ const cairo = Cairo({
 });
 
 export const metadata: Metadata = {
-  title: "صندوق العائلةر",
+  title: "صندوق العائلة",
   description: "نظام محاسبي ذكي لإدارة الشؤون المالية للعائلة",
   icons: {
     icon: "/favicon.svg",

@@ -21,7 +21,7 @@ export const ChangePasswordModal = ({ isOpen, onClose }: ChangePasswordModalProp
     const [confirmPassword, setConfirmPassword] = useState("");
     const [loading, setLoading] = useState(false);
 
-    const handleSubmit = async (e: React.FormEvent) => {
+    const handleSubmit = async (e: React.SyntheticEvent<HTMLFormElement>) => {
         e.preventDefault();
 
         if (newPassword !== confirmPassword) {

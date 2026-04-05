@@ -77,8 +77,32 @@ const NavGroup = ({
     title, icon: Icon, items, isOpen: sidebarOpen, isExpanded, onToggle
 }: { title: string; icon: any; items: any[]; isOpen: boolean; isExpanded: boolean; onToggle: () => void }) => {
     const pathname = usePathname();
-    const isAnyActive = items.some(i => pathname === i.href || (i.href !== '/' && pathname.startsWith(i.href)));
+
+    // Recursively check if any nested child is active
+    const isAnyActive = items.some(i => {
+        if (i.isSection && i.items) return i.items.some((child: any) => pathname === child.href || (child.href && child.href !== '/' && pathname.startsWith(child.href)));
+        return !i.isSection && (pathname === i.href || (i.href && i.href !== '/' && pathname.startsWith(i.href!)));
+    });
     const { isMobile, setIsOpen } = useSidebar();
+
+    // Track which sub-sections are open; default open the active one
+    const [openSections, setOpenSections] = React.useState<Record<string, boolean>>(() => {
+        const initial: Record<string, boolean> = {};
+        items.forEach((item) => {
+            if (item.isSection && item.items) {
+                const hasActive = item.items.some((c: any) => pathname === c.href || (c.href && pathname.startsWith(c.href)));
+                initial[item.title] = hasActive;
+            }
+        });
+        return initial;
+    });
+
+    const toggleSection = (sectionTitle: string) => {
+        setOpenSections(prev => ({ ...prev, [sectionTitle]: !prev[sectionTitle] }));
+    };
+
+    // Flat list of all leaf links (for collapsed tooltip)
+    const allLeafItems = items.flatMap((i: any) => i.isSection && i.items ? i.items : (i.isSection ? [] : [i]));
 
     if (!sidebarOpen) {
         return (
@@ -96,17 +120,17 @@ const NavGroup = ({
                 </TooltipTrigger>
                 <TooltipContent side="left" className="font-bold border-sidebar-border bg-sidebar text-sidebar-foreground p-0 overflow-hidden min-w-[160px]">
                     <div className="px-3 py-2 border-b border-sidebar-border/50 text-xs uppercase tracking-wider text-sidebar-foreground/50">{title}</div>
-                    {items.map(item => (
+                    {allLeafItems.filter((i: any) => !i.isSection).map((item: any) => (
                         <Link
                             key={item.href}
-                            href={item.href}
+                            href={item.href!}
                             onClick={() => { if (isMobile) setIsOpen(false); }}
                             className={cn(
                                 "flex items-center gap-2 px-3 py-2 text-sm transition-colors",
                                 pathname === item.href ? "text-blue-400" : "text-sidebar-foreground/80 hover:text-sidebar-foreground hover:bg-sidebar-accent"
                             )}
                         >
-                            <item.icon size={14} />
+                            {item.icon && <item.icon size={14} />}
                             {item.title}
                         </Link>
                     ))}
@@ -146,12 +170,74 @@ const NavGroup = ({
 
             {isExpanded && (
                 <div className="mt-1 mr-4 border-r border-slate-700/60 pr-2 space-y-0.5 animate-in fade-in slide-in-from-top-1 duration-200">
-                    {items.map(item => {
+                    {items.map((item, idx) => {
+                        // ── Collapsible sub-section ──────────────────────────
+                        if (item.isSection && item.items) {
+                            const isSectionOpen = openSections[item.title] ?? false;
+                            const hasSectionActive = item.items.some((c: any) => pathname === c.href || (c.href && pathname.startsWith(c.href)));
+                            return (
+                                <div key={`section-${idx}`}>
+                                    <button
+                                        onClick={() => toggleSection(item.title)}
+                                        className={cn(
+                                            "w-full flex items-center gap-2 px-3 py-1.5 rounded-lg text-[11px] font-black uppercase tracking-[0.12em] transition-all duration-200 group",
+                                            hasSectionActive
+                                                ? "text-blue-400"
+                                                : "text-sidebar-foreground/40 hover:text-sidebar-foreground/70"
+                                        )}
+                                    >
+                                        <span className="flex-1 text-right truncate">{item.title}</span>
+                                        <APP_ICONS.ACTIONS.CHEVRON_DOWN
+                                            size={11}
+                                            className={cn(
+                                                "shrink-0 transition-transform duration-200",
+                                                isSectionOpen ? "rotate-0" : "-rotate-90"
+                                            )}
+                                        />
+                                    </button>
+
+                                    {isSectionOpen && (
+                                        <div className="mr-2 border-r border-slate-700/40 pr-2 space-y-0.5 animate-in fade-in slide-in-from-top-1 duration-150">
+                                            {item.items.map((child: any) => {
+                                                const isActive = pathname === child.href;
+                                                return (
+                                                    <Link
+                                                        key={child.href}
+                                                        href={child.href!}
+                                                        onClick={() => { if (isMobile) setIsOpen(false); }}
+                                                        className={cn(
+                                                            "flex items-center gap-2.5 px-3 py-2 rounded-lg transition-all duration-200 group relative text-[12px]",
+                                                            isActive
+                                                                ? "bg-blue-600/15 text-blue-400 font-semibold"
+                                                                : "text-sidebar-foreground/70 hover:bg-slate-800/40 hover:text-sidebar-foreground"
+                                                        )}
+                                                    >
+                                                        {isActive && <div className="absolute inset-y-1.5 right-0 w-0.5 bg-blue-500 rounded-full" />}
+                                                        {child.icon && (
+                                                            <child.icon
+                                                                size={13}
+                                                                className={cn(
+                                                                    "shrink-0 transition-transform duration-200 group-hover:scale-110",
+                                                                    isActive ? "text-blue-400" : "group-hover:text-blue-400"
+                                                                )}
+                                                            />
+                                                        )}
+                                                        <span className="truncate">{child.title}</span>
+                                                    </Link>
+                                                );
+                                            })}
+                                        </div>
+                                    )}
+                                </div>
+                            );
+                        }
+
+                        // ── Regular leaf link ────────────────────────────────
                         const isActive = pathname === item.href;
                         return (
                             <Link
                                 key={item.href}
-                                href={item.href}
+                                href={item.href!}
                                 onClick={() => { if (isMobile) setIsOpen(false); }}
                                 className={cn(
                                     "flex items-center gap-2.5 px-3 py-2 rounded-lg transition-all duration-200 group relative text-[13px]",
@@ -170,7 +256,7 @@ const NavGroup = ({
                                         )}
                                     />
                                 ) : (
-                                    <div className="w-3.5 h-3.5" /> // Spacer if no icon
+                                    <div className="w-3.5 h-3.5" />
                                 )}
                                 <span className="truncate">{item.title}</span>
                             </Link>
@@ -192,12 +278,22 @@ const Sidebar = () => {
     const { isAdmin, checkPermission } = useAuth();
     const [openGroup, setOpenGroup] = useState<string | null>(null);
 
-    const filterByPermission = (items: any[]) => {
-        return items.filter(item => {
-            if (isAdmin) return true;
-            if (!item.permission) return true;
-            return checkPermission(item.permission);
-        });
+    const filterByPermission = (items: any[]): any[] => {
+        return items.reduce((acc: any[], item) => {
+            // Section items: recursively filter their children, hide if empty
+            if (item.isSection && item.items) {
+                const filteredChildren = filterByPermission(item.items);
+                if (filteredChildren.length > 0) {
+                    acc.push({ ...item, items: filteredChildren });
+                }
+                return acc;
+            }
+            // Regular items: check permission
+            if (isAdmin || !item.permission || checkPermission(item.permission)) {
+                acc.push(item);
+            }
+            return acc;
+        }, []);
     };
 
     // Define visible items
@@ -208,6 +304,12 @@ const Sidebar = () => {
     const visibleReportsItems = filterByPermission(reportsItems);
     const visibleSettingsItems = filterByPermission(settingsItems);
 
+    // Helper: check if an item (or any of its nested children) matches the current path
+    const itemMatchesPath = (item: any): boolean => {
+        if (item.isSection && item.items) return item.items.some(itemMatchesPath);
+        return pathname === item.href || (item.href && item.href !== '/' && pathname.startsWith(item.href));
+    };
+
     // Auto-expand on navigation
     React.useEffect(() => {
         const groups = [
@@ -217,9 +319,7 @@ const Sidebar = () => {
             { title: "الإعدادات", items: visibleSettingsItems },
         ];
 
-        const activeGroup = groups.find(g => 
-            g.items.some(i => pathname === i.href || (i.href !== '/' && pathname.startsWith(i.href)))
-        );
+        const activeGroup = groups.find(g => g.items.some(itemMatchesPath));
 
         if (activeGroup) {
             setOpenGroup(activeGroup.title);

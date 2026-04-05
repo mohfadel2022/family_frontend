@@ -17,7 +17,7 @@ import { ActionModal } from '@/components/ui/ActionModal';
 import { WithPermission } from '@/components/auth/WithPermission';
 
 import { META_BASE, getAuthHeader } from '@/lib/api';
-import { getCategoryIcon } from '@/lib/permissions';
+import { getCategoryIcon, getActionIcon } from '@/lib/permissions';
 import { CustomButton } from '@/components/ui/CustomButton';
 
 const API_BASE = META_BASE;
@@ -144,10 +144,13 @@ export default function RolesPage() {
 
     const permissionsBySection = permissions.reduce((acc, perm) => {
         const category = perm.category || 'عام';
-        const main = category.split(' / ')[0].trim() || 'عام';
+        const parts = category.split('/').map(p => p.trim());
+        const main = parts[0];
+        const sub = parts[1] || '';
+        
         if (!acc[main]) acc[main] = {};
-        if (!acc[main][category]) acc[main][category] = [];
-        acc[main][category].push(perm);
+        if (!acc[main][sub]) acc[main][sub] = [];
+        acc[main][sub].push(perm);
         return acc;
     }, {} as Record<string, Record<string, Permission[]>>);
 
@@ -322,15 +325,17 @@ export default function RolesPage() {
                                         {Object.entries(
                                             role.permissions.reduce((acc, rp) => {
                                                 const cat = rp.permission.category;
-                                                if (!acc[cat]) acc[cat] = [];
-                                                acc[cat].push(rp.permission.name);
+                                                const parts = cat.split('/').map(p => p.trim());
+                                                const sub = parts[1] || parts[0];
+                                                if (!acc[sub]) acc[sub] = [];
+                                                acc[sub].push(rp.permission.name.split(' ').pop() || rp.permission.name);
                                                 return acc;
                                             }, {} as Record<string, string[]>)
-                                        ).slice(0, 6).map(([category, names]) => (
-                                            <div key={category} className="group/perm animate-in slide-in-from-right-2 duration-300">
+                                        ).slice(0, 6).map(([sub, names]) => (
+                                            <div key={sub} className="group/perm animate-in slide-in-from-right-2 duration-300">
                                                 <div className="flex items-center gap-2 mb-0.5">
-                                                    {React.createElement(getCategoryIcon(category), { size: 12, className: cn("shrink-0", theme.accent) })}
-                                                    <p className="text-[10px] font-black text-muted-foreground/60 truncate">{category}</p>
+                                                    {React.createElement(getCategoryIcon(sub), { size: 12, className: cn("shrink-0", theme.accent) })}
+                                                    <p className="text-[10px] font-black text-muted-foreground/60 truncate">{sub}</p>
                                                 </div>
                                                 <p className="text-[11px] font-bold text-muted-foreground leading-tight pr-5 line-clamp-2">
                                                     {names.join('، ')}
@@ -511,23 +516,33 @@ export default function RolesPage() {
 
                                                             {isExpanded && (
                                                                 <div className="p-4 pt-0 grid grid-cols-1 md:grid-cols-2 gap-2 animate-in slide-in-from-top-2 duration-300">
-                                                                    {perms.map(perm => (
-                                                                        <label key={perm.id} className={cn(
-                                                                            "flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-all hover:bg-muted/50",
-                                                                            formData.permissionIds.includes(perm.id) ? cn(theme.border, theme.muted.replace('bg-', 'bg-') + "/20") : "border-border/50 bg-card"
-                                                                        )}>
-                                                                            <input
-                                                                                type="checkbox"
-                                                                                className={cn("w-4 h-4 rounded-md border-slate-300", theme.accent.replace('text-', 'text-'))}
-                                                                                checked={formData.permissionIds.includes(perm.id)}
-                                                                                onChange={() => togglePermission(perm.id)}
-                                                                            />
-                                                                            <div>
-                                                                                <p className="text-[11px] font-black text-foreground/90">{perm.name}</p>
-                                                                                <p className="text-[9px] text-muted-foreground/60 font-bold">{perm.code}</p>
-                                                                            </div>
-                                                                        </label>
-                                                                    ))}
+                                                                    {perms.map(perm => {
+                                                                        const ActionIcon = getActionIcon(perm.code);
+                                                                        const isSelected = formData.permissionIds.includes(perm.id);
+                                                                        return (
+                                                                            <label key={perm.id} className={cn(
+                                                                                "flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-all hover:bg-muted/50",
+                                                                                isSelected ? cn(theme.border, theme.muted.replace('bg-', 'bg-') + "/20") : "border-border/50 bg-card"
+                                                                            )}>
+                                                                                <input
+                                                                                    type="checkbox"
+                                                                                    className={cn("w-4 h-4 rounded-md border-slate-300", theme.accent.replace('text-', 'text-'))}
+                                                                                    checked={isSelected}
+                                                                                    onChange={() => togglePermission(perm.id)}
+                                                                                />
+                                                                                <div className={cn(
+                                                                                    "w-8 h-8 rounded-lg flex items-center justify-center transition-all",
+                                                                                    isSelected ? cn(theme.primary, "text-white shadow-md") : "bg-muted text-muted-foreground/40"
+                                                                                )}>
+                                                                                    <ActionIcon size={12} />
+                                                                                </div>
+                                                                                <div className="flex-1 min-w-0">
+                                                                                    <p className="text-[11px] font-black text-foreground/90 truncate">{perm.name}</p>
+                                                                                    <p className="text-[9px] text-muted-foreground/40 font-bold font-mono">{perm.code.split('_').pop()}</p>
+                                                                                </div>
+                                                                            </label>
+                                                                        );
+                                                                    })}
                                                                 </div>
                                                             )}
                                                         </div>

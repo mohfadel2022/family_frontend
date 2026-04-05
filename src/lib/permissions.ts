@@ -47,6 +47,7 @@ export const getCategoryIcon = (category: string) => {
     'سمات الصفحات': APP_ICONS.NAV.THEMES,
     'الإعدادات': APP_ICONS.NAV.SETTINGS,
     'الجهات': APP_ICONS.MODULES.ENTITIES,
+    'مراكز التكلفة': APP_ICONS.NAV.DASHBOARD,
     };
 
   // Try the most specific sub-category first, then fallback to the main category, finally default

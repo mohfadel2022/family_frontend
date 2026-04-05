@@ -78,8 +78,10 @@ interface PivotMember {
     status: string;
     affiliationYear: number;
     stoppedAt: string | null;
-    subscriptions: Record<number, number | null>;
+    subscriptions: Record<number, { amount: number, symbol: string } | number | null>;
     observations: string;
+    residenceName: string;
+    paymentName: string;
 }
 
 interface PivotEntity {
@@ -89,7 +91,7 @@ interface PivotEntity {
 
 interface PivotData {
     years: number[];
-    data: PivotEntity[];
+    members: PivotMember[];
 }
 
 export default function SubscriptionPivotReport() {
@@ -105,9 +107,10 @@ export default function SubscriptionPivotReport() {
     const [endYear, setEndYear] = useState<string>('');
     const [affYear, setAffYear] = useState<string>('');
     const [stopYear, setStopYear] = useState<string>('');
+    const [entityFilterType, setEntityFilterType] = useState<'residence' | 'payment'>('payment');
     const [showFilters, setShowFilters] = useState(false);
 
-    // Load filters from localStorage on mount
+    // Load filters from localStorage and fetch initial data
     useEffect(() => {
         const saved = localStorage.getItem('subscription-pivot-filters');
         if (saved) {
@@ -120,6 +123,7 @@ export default function SubscriptionPivotReport() {
                 if (parsed.endYear) setEndYear(parsed.endYear);
                 if (parsed.affYear) setAffYear(parsed.affYear);
                 if (parsed.stopYear) setStopYear(parsed.stopYear);
+                if (parsed.entityFilterType) setEntityFilterType(parsed.entityFilterType);
                 if (parsed.showFilters !== undefined) setShowFilters(parsed.showFilters);
             } catch (e) {
                 console.error('Error parsing saved filters', e);
@@ -139,6 +143,7 @@ export default function SubscriptionPivotReport() {
                 endYear,
                 affYear,
                 stopYear,
+                entityFilterType,
                 showFilters
             };
             localStorage.setItem('subscription-pivot-filters', JSON.stringify(filters));
@@ -146,12 +151,11 @@ export default function SubscriptionPivotReport() {
     }, [searchTerm, selectedEntity, selectedStatus, startYear, endYear, affYear, stopYear, showFilters, loading]);
 
     const fetchReport = async () => {
-        setLoading(true);
+        if (!data) setLoading(true);
         try {
             const res = await axios.get(`${SUB_BASE}/reports/pivot`, AUTH_HEADER);
             setData(res.data);
-
-            // Only set defaults if startYear/endYear are still empty (meaning no localStorage found)
+            
             if (res.data.years.length > 0) {
                 const saved = localStorage.getItem('subscription-pivot-filters');
                 const hasSavedYears = saved && JSON.parse(saved).startYear;
@@ -168,6 +172,8 @@ export default function SubscriptionPivotReport() {
         }
     };
 
+    // Removed duplicate mount useEffect
+
     const filteredYears = useMemo(() => {
         if (!data) return [];
         return data.years.filter(y =>
@@ -176,31 +182,69 @@ export default function SubscriptionPivotReport() {
         );
     }, [data, startYear, endYear]);
 
-    const filteredData = useMemo(() => {
+    const entityList = useMemo(() => {
+        if (!data) return [];
+        const names = data.members.map((m: any) => 
+            entityFilterType === 'residence' ? m.residenceName : m.paymentName
+        );
+        return Array.from(new Set(names)).sort();
+    }, [data, entityFilterType]);
+
+    const processedData = useMemo(() => {
         if (!data) return [];
 
-        return data.data
-            .filter(e => selectedEntity === 'all' || e.entityName === selectedEntity)
-            .map(entity => ({
-                ...entity,
-                members: entity.members.filter(m => {
-                    const matchesSearch = m.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                        entity.entityName.toLowerCase().includes(searchTerm.toLowerCase());
-                    const matchesStatus = selectedStatus === 'all' || m.status === selectedStatus;
-                    const matchesAff = !affYear || m.affiliationYear === parseInt(affYear);
-                    const matchesStop = !stopYear || (m.stoppedAt && new Date(m.stoppedAt).getFullYear() === parseInt(stopYear));
+        const membersList = data.members;
+        
+        // 1. Filter by Search, Status, Branch
+        let filtered = membersList.filter((m: any) => {
+            const nameMatch = m.name.toLowerCase().includes(searchTerm.toLowerCase());
+            const residenceMatch = m.residenceName.toLowerCase().includes(searchTerm.toLowerCase());
+            const paymentMatch = m.paymentName.toLowerCase().includes(searchTerm.toLowerCase());
 
-                    return matchesSearch && matchesStatus && matchesAff && matchesStop;
-                })
-            }))
-            .filter(entity => entity.members.length > 0);
-    }, [data, searchTerm, selectedEntity, selectedStatus, affYear, stopYear]);
+            const statusMatch = selectedStatus === 'all' || m.status === selectedStatus;
+            
+            let affYearMatch = true;
+            if (affYear !== 'all' && affYear !== '') {
+                affYearMatch = m.affiliationYear === Number(affYear);
+            }
+            
+            let stopYearMatch = true;
+            if (stopYear !== 'all' && stopYear !== '') {
+                const sDate = m.stoppedAt ? new Date(m.stoppedAt) : null;
+                stopYearMatch = sDate?.getFullYear() === Number(stopYear);
+            }
+
+            return (nameMatch || residenceMatch || paymentMatch) && statusMatch && affYearMatch && stopYearMatch;
+        });
+
+        // 2. Group by current entityFilterType
+        const entitiesMap = new Map<string, any[]>();
+        filtered.forEach(m => {
+            const entityName = entityFilterType === 'residence' ? m.residenceName : m.paymentName;
+            if (!entitiesMap.has(entityName)) {
+                entitiesMap.set(entityName, []);
+            }
+            entitiesMap.get(entityName)!.push(m);
+        });
+
+        // 3. Filter by selectedEntity name
+        let finalGroups = Array.from(entitiesMap.entries()).map(([name, members]) => ({
+            entityName: name,
+            members
+        }));
+
+        if (selectedEntity !== 'all') {
+            finalGroups = finalGroups.filter(g => g.entityName === selectedEntity);
+        }
+
+        return finalGroups.sort((a, b) => a.entityName.localeCompare(b.entityName));
+    }, [data, searchTerm, selectedStatus, affYear, stopYear, entityFilterType, selectedEntity]);
 
     const stats = useMemo(() => {
         let total = 0;
         let collected = 0;
-        filteredData.forEach(entity => {
-            entity.members.forEach(m => {
+        processedData.forEach((entity: any) => {
+            entity.members.forEach((m: any) => {
                 total++;
                 if (filteredYears.some(y => m.subscriptions[y] !== null)) {
                     collected++;
@@ -208,7 +252,7 @@ export default function SubscriptionPivotReport() {
             });
         });
         return { total, collected, uncollected: total - collected };
-    }, [filteredData, filteredYears]);
+    }, [processedData, filteredYears]);
 
     const yearlyStats = useMemo(() => {
         const stats: Record<number, {
@@ -222,8 +266,8 @@ export default function SubscriptionPivotReport() {
             stats[y] = { collected: 0, uncollected: 0, active: 0, inactive: 0, deceased: 0 };
         });
 
-        filteredData.forEach(entity => {
-            entity.members.forEach(m => {
+        processedData.forEach((entity: any) => {
+            entity.members.forEach((m: any) => {
                 filteredYears.forEach(y => {
                     const isAffiliated = y >= m.affiliationYear;
                     const isPaid = m.subscriptions[y] !== null;
@@ -244,7 +288,7 @@ export default function SubscriptionPivotReport() {
             });
         });
         return stats;
-    }, [filteredData, filteredYears]);
+    }, [processedData, filteredYears]);
 
     const handleExportExcel = () => {
         if (!data) return;
@@ -253,8 +297,8 @@ export default function SubscriptionPivotReport() {
         const keys = ['entity', 'name', 'affiliation', ...filteredYears.map(y => y.toString()), 'obs'];
 
         const exportRows: any[] = [];
-        filteredData.forEach(entity => {
-            entity.members.forEach(m => {
+        processedData.forEach((entity: any) => {
+            entity.members.forEach((m: any) => {
                 const row: any = {
                     entity: entity.entityName,
                     name: m.name,
@@ -334,14 +378,14 @@ export default function SubscriptionPivotReport() {
         //     '#9333ea', // Purple 600
         // ];
 
-        const sections = filteredData.map(entity => {
+        const sections = processedData.map((entity: any) => {
             const entityRows: any[] = [];
             const entityStats: Record<number, any> = {};
             filteredYears.forEach(y => {
                 entityStats[y] = { collected: 0, uncollected: 0, active: 0, inactive: 0, deceased: 0 };
             });
 
-            entity.members.forEach(m => {
+            entity.members.forEach((m: any) => {
                 const row: any = { name: m.name };
                 filteredYears.forEach(y => {
                     const isAffiliated = y >= m.affiliationYear;
@@ -473,11 +517,12 @@ export default function SubscriptionPivotReport() {
         );
     };
 
-    if (loading) {
+    // Full page loader only on initial load
+    if (loading && !data) {
         return (
-            <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4">
+            <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4 animate-in fade-in duration-700">
                 <APP_ICONS.STATE.LOADING className={cn("w-12 h-12 animate-spin", theme.accent)} />
-                <p className="text-muted-foreground/80 font-bold animate-pulse">جاري إعداد جدول الاشتراكات المختصر...</p>
+                <p className="text-muted-foreground/80 font-black animate-pulse tracking-tight">جاري إعداد جدول الاشتراكات المختصر...</p>
             </div>
         );
     }
@@ -521,12 +566,44 @@ export default function SubscriptionPivotReport() {
                             Excel
                         </CustomButton>
                     </WithPermission>
-                </div>
-            </PageHeader>
+                    {loading && (
+                    <div className="flex items-center gap-2 px-4 py-2 bg-indigo-50 border border-indigo-100 rounded-2xl animate-in zoom-in-95 duration-200">
+                        <APP_ICONS.STATE.LOADING className="w-4 h-4 animate-spin text-indigo-600" />
+                        <span className="text-[10px] font-black text-indigo-600 uppercase tracking-tighter">جاري التحديث...</span>
+                    </div>
+                )}
+            </div>
+        </PageHeader>
 
             {/* Filters Section */}
             {showFilters && (
-                <div className={cn("bg-card p-6 rounded-[2rem] border shadow-xl grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 animate-in slide-in-from-top-4 duration-300", theme.border, theme.shadow)}>
+                <div className={cn("bg-card p-6 rounded-[2rem] border shadow-xl grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 animate-in slide-in-from-top-4 duration-300", theme.border, theme.shadow)}>
+                    <div className="space-y-1.5 flex flex-col justify-end">
+                        <label className="text-[10px] font-black text-muted-foreground/60 uppercase mr-1">نظام تجميع الجهات</label>
+                        <div className="flex bg-muted/50 p-1 rounded-xl border border-border items-center h-10">
+                            <button
+                                onClick={() => setEntityFilterType('residence')}
+                                className={cn(
+                                    "flex-1 h-8 rounded-lg text-[10px] font-black transition-all flex items-center justify-center gap-2",
+                                    entityFilterType === 'residence' ? "bg-card text-indigo-600 shadow-sm border border-border" : "text-muted-foreground hover:bg-muted"
+                                )}
+                            >
+                                <APP_ICONS.MODULES.ENTITIES size={12} />
+                                حسب السكن
+                            </button>
+                            <button
+                                onClick={() => setEntityFilterType('payment')}
+                                className={cn(
+                                    "flex-1 h-8 rounded-lg text-[10px] font-black transition-all flex items-center justify-center gap-2",
+                                    entityFilterType === 'payment' ? "bg-card text-amber-600 shadow-sm border border-border" : "text-muted-foreground hover:bg-muted"
+                                )}
+                            >
+                                <APP_ICONS.MODULES.ACCOUNTS size={12} />
+                                حسب الدفع
+                            </button>
+                        </div>
+                    </div>
+
                     <div className="space-y-1.5">
                         <label className="text-[10px] font-black text-muted-foreground/60 uppercase mr-1">بحث نصي</label>
                         <div className="relative">
@@ -548,8 +625,8 @@ export default function SubscriptionPivotReport() {
                             </SelectTrigger>
                             <SelectContent>
                                 <SelectItem value="all">الكل</SelectItem>
-                                {data.data.map(e => (
-                                    <SelectItem key={e.entityName} value={e.entityName}>{e.entityName}</SelectItem>
+                                {entityList.map(name => (
+                                    <SelectItem key={name} value={name}>{name}</SelectItem>
                                 ))}
                             </SelectContent>
                         </Select>
@@ -629,7 +706,8 @@ export default function SubscriptionPivotReport() {
                 </div>
             )}
 
-            <div className={cn("bg-card rounded-[2.5rem] border shadow-2xl overflow-hidden", theme.border, theme.shadow)}>
+            <div className={cn("transition-all duration-500", loading ? "opacity-50 pointer-events-none blur-[1px]" : "opacity-100")}>
+                <div className={cn("bg-card rounded-[2.5rem] border shadow-2xl overflow-hidden", theme.border, theme.shadow)}>
                 <div className="overflow-x-auto scrollbar-thin scrollbar-thumb-muted-foreground/20 scrollbar-track-transparent">
                     <Table className="relative min-w-max border-collapse">
                         <TableHeader>
@@ -650,7 +728,7 @@ export default function SubscriptionPivotReport() {
                             </TableRow>
                         </TableHeader>
                         <TableBody>
-                            {filteredData.map(entity => (
+                            {processedData.map((entity: any) => (
                                 <React.Fragment key={entity.entityName}>
                                     <TableRow className={cn("bg-muted/40", theme.muted)}>
                                         <TableCell
@@ -666,7 +744,7 @@ export default function SubscriptionPivotReport() {
                                             </div>
                                         </TableCell>
                                     </TableRow>
-                                    {entity.members.map((member, mIdx) => (
+                                    {entity.members.map((member: any, mIdx: number) => (
                                         <TableRow key={member.id} className={cn("group transition-all", mIdx % 2 === 0 ? "bg-white hover:bg-muted/20" : "bg-muted/20 hover:bg-muted/40")}>
                                             <TableCell className="font-bold text-slate-800 text-sm sticky right-0 bg-card group-hover:bg-muted/50 z-20 border-l border-input/50 py-3 shadow-[5px_0_10px_-5px_rgba(0,0,0,0.05)]">
                                                 {member.name}
@@ -837,6 +915,7 @@ export default function SubscriptionPivotReport() {
                     </div> */}
                 </div>
             </div>
+        </div>
         </div>
         </ProtectedRoute>
     );

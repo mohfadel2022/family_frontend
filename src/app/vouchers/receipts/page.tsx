@@ -38,8 +38,9 @@ import { ViewAttachmentsModal } from '@/components/ViewAttachmentsModal';
 import { useAuth } from '@/context/AuthContext';
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 import { WithPermission } from '@/components/auth/WithPermission';
-import { API_BASE, getAuthHeader } from '@/lib/api';
+import { API_BASE, META_BASE, COST_CENTER_BASE, getAuthHeader } from '@/lib/api';
 import { usePageTheme } from '@/hooks/usePageTheme';
+import { LineCostCenterModal } from '@/components/vouchers/LineCostCenterModal';
 
 // Remove local API_BASE and getAuthHeader, now using imports from @/lib/api
 
@@ -54,6 +55,7 @@ interface JournalLine {
     exchangeRate: number;
     baseDebit: number;
     baseCredit: number;
+    costCenters: { costCenterId: string, percentage: number }[];
 }
 
 const ReceiptsPage = () => {
@@ -86,6 +88,7 @@ const ReceiptsPage = () => {
     const [branches, setBranches] = useState<any[]>([]);
     const [saving, setSaving] = useState(false);
     const [currencies, setCurrencies] = useState<any[]>([]);
+    const [costCenters, setCostCenters] = useState<any[]>([]);
     const [isActionModalOpen, seIsActionModalOpen] = useState(false);
     const [subsMembers, setSubsMembers] = useState<any[]>([]);
 
@@ -99,6 +102,7 @@ const ReceiptsPage = () => {
         { title: '', description: '', variant: 'danger', icon: APP_ICONS.STATE.WARNING, label: '' }
     );
     const [confirmLoading, setConfirmLoading] = useState(false);
+    const [activeLineForCc, setActiveLineForCc] = useState<string | null>(null);
 
     const askConfirm = (config: typeof confirmConfig, action: () => Promise<void>) => {
         setConfirmConfig(config);
@@ -144,14 +148,17 @@ const ReceiptsPage = () => {
 
     const fetchMeta = async () => {
         try {
-            const [accRes, branchRes, currRes] = await Promise.all([
-                axios.get(`${API_BASE}/meta/accounts`, getAuthHeader()),
-                axios.get(`${API_BASE}/meta/branches`, getAuthHeader()),
-                axios.get(`${API_BASE}/meta/currencies`, getAuthHeader())
+            const [accRes, branchRes, currRes, ccRes] = await Promise.all([
+                axios.get(`${META_BASE}/accounts`, getAuthHeader()),
+                axios.get(`${META_BASE}/branches`, getAuthHeader()),
+                axios.get(`${META_BASE}/currencies`, getAuthHeader()),
+                axios.get(`${COST_CENTER_BASE}`, getAuthHeader())
             ]);
             setAccounts(accRes.data);
             setBranches(branchRes.data);
             setCurrencies(currRes.data);
+            // Filter to only show secondary centers (those with parents)
+            setCostCenters(ccRes.data.filter((cc: any) => cc.parentId !== null));
             if (branchRes.data.length > 0) setBranchId(branchRes.data[0].id);
         } catch (err) {
             console.error(err);
@@ -176,8 +183,8 @@ const ReceiptsPage = () => {
         setDescription('سند قبض رقم ...');
         setDate(new Date().toISOString().split('T')[0]);
         setLines([
-            { tempId: '1', accountId: '', currencyId: '', currencyCode: '---', debit: 0, credit: 0, exchangeRate: 1, baseDebit: 0, baseCredit: 0 },
-            { tempId: '2', accountId: '', currencyId: '', currencyCode: '---', debit: 0, credit: 0, exchangeRate: 1, baseDebit: 0, baseCredit: 0 },
+            { tempId: '1', accountId: '', currencyId: '', currencyCode: '---', debit: 0, credit: 0, exchangeRate: 1, baseDebit: 0, baseCredit: 0, costCenters: [] },
+            { tempId: '2', accountId: '', currencyId: '', currencyCode: '---', debit: 0, credit: 0, exchangeRate: 1, baseDebit: 0, baseCredit: 0, costCenters: [] },
         ]);
         setAttachments([]);
         setStatus(null);
@@ -186,7 +193,7 @@ const ReceiptsPage = () => {
     const fetchRate = async (currencyId: string, targetDate: string) => {
         if (!currencyId) return 1;
         try {
-            const res = await axios.get(`${API_BASE}/meta/currencies/${currencyId}/rate-at?date=${targetDate}`, getAuthHeader());
+            const res = await axios.get(`${META_BASE}/currencies/${currencyId}/rate-at?date=${targetDate}`, getAuthHeader());
             return Number(res.data.rate);
         } catch (err) {
             console.error('Error fetching rate:', err);
@@ -270,7 +277,11 @@ const ReceiptsPage = () => {
             credit: Number(l.credit),
             exchangeRate: Number(l.exchangeRate),
             baseDebit: Number(l.baseDebit),
-            baseCredit: Number(l.baseCredit)
+            baseCredit: Number(l.baseCredit),
+            costCenters: l.costCenters?.map((cc: any) => ({
+                costCenterId: cc.costCenterId,
+                percentage: Number(cc.percentage)
+            })) || []
         })));
         setAttachments(entry.attachments || []);
 
@@ -340,7 +351,8 @@ const ReceiptsPage = () => {
                     credit: Number(l.credit),
                     exchangeRate: Number(l.exchangeRate),
                     baseDebit: Number(l.baseDebit),
-                    baseCredit: Number(l.baseCredit)
+                    baseCredit: Number(l.baseCredit),
+                    costCenters: l.costCenters || []
                 })),
                 attachments: attachments.map(att => ({
                     fileName: att.fileName,
@@ -448,7 +460,7 @@ const ReceiptsPage = () => {
                         <div className="flex items-center gap-1.5">
                             <span className="font-black text-foreground/80 text-sm">
                                 {foreignLine
-                                    ? (Number(foreignLine.debit || foreignLine.credit) * Number(foreignLine.exchangeRate)).toLocaleString(undefined, { minimumFractionDigits: 2 })
+                                    ? ((Number(foreignLine.debit) || Number(foreignLine.credit)) * Number(foreignLine.exchangeRate)).toLocaleString(undefined, { minimumFractionDigits: 2 })
                                     : Number(entry.totalAmount).toLocaleString(undefined, { minimumFractionDigits: 2 })
                                 }
                             </span>
@@ -459,7 +471,7 @@ const ReceiptsPage = () => {
                         {foreignLine && (
                             <div className="flex items-center gap-1.5 opacity-80 border-t border-border mt-0.5 pt-0.5">
                                 <span className={cn("font-bold text-[11px]", theme.accent)}>
-                                    {Number(foreignLine.debit || foreignLine.credit).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                    {(Number(foreignLine.debit) || Number(foreignLine.credit)).toLocaleString(undefined, { minimumFractionDigits: 2 })}
                                 </span>
                                 <span className="text-[9px] font-black text-muted-foreground/60 uppercase">
                                     {foreignLine.currency?.code}
@@ -495,13 +507,13 @@ const ReceiptsPage = () => {
                 
                 return (
                     <div className="flex justify-end gap-1 opacity-0 group-hover:opacity-100 transition-all">
-                        {entry.status === 'POSTED' ? (
+                        {(entry.status === 'POSTED' || isLinked) ? (
                             <Button
                                 size="icon"
                                 variant="ghost"
                                 onClick={() => handleEdit(entry, true)}
                                 className="w-8 h-8 text-muted-foreground hover:text-foreground/80 hover:bg-accent dark:hover:bg-slate-800 rounded-xl transition-all"
-                                title="عرض فقط"
+                                title={isLinked ? "مرتبط بالتحصيل - عرض فقط" : "عرض فقط"}
                             >
                                 <APP_ICONS.ACTIONS.VIEW size={14} />
                             </Button>
@@ -531,11 +543,11 @@ const ReceiptsPage = () => {
                             </Button>
                         </WithPermission>
  
-                        {entry.subscriptionCollectionId && (
+                        {isLinked && (
                             <Button
                                 size="icon"
                                 variant="ghost"
-                                onClick={(e) => { e.stopPropagation(); router.push(`/subscriptions/collect?id=${entry.subscriptionCollectionId}`); }}
+                                onClick={(e) => { e.stopPropagation(); router.push(`/subscriptions/collect?id=${entry.subscriptionCollection.id}`); }}
                                 className="w-8 h-8 text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 rounded-xl transition-all"
                                 title="الانتقال للتحصيل"
                             >
@@ -543,14 +555,15 @@ const ReceiptsPage = () => {
                             </Button>
                         )}
  
-                        {entry.status === 'POSTED' ? (
+                        {(entry.status === 'POSTED' || isLinked) ? (
                             <WithPermission permission="RECEIPT_UNPOST">
                                 <Button
                                     size="icon"
                                     variant="ghost"
+                                    disabled={isLinked}
                                     onClick={() => handleUnpost(entry.id)}
-                                    className="w-8 h-8 text-amber-600 dark:text-amber-400 hover:text-amber-700 dark:hover:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-900/30 rounded-xl transition-all"
-                                    title="إلغاء الترحيل (مدير فقط)"
+                                    className="w-8 h-8 text-amber-600 dark:text-amber-400 hover:text-amber-700 dark:hover:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-900/30 rounded-xl transition-all disabled:opacity-30"
+                                    title={isLinked ? "مرتبط بالتحصيل - لا يمكن إلغاء الترحيل" : "إلغاء الترحيل (مدير فقط)"}
                                 >
                                     <APP_ICONS.ACTIONS.UNDO size={14} />
                                 </Button>
@@ -575,7 +588,7 @@ const ReceiptsPage = () => {
     ], [currencies]);
 
     const addLine = () => {
-        setLines([...lines, { tempId: Math.random().toString(), accountId: '', currencyId: '', currencyCode: '---', debit: 0, credit: 0, exchangeRate: 1, baseDebit: 0, baseCredit: 0 }]);
+        setLines([...lines, { tempId: Math.random().toString(), accountId: '', currencyId: '', currencyCode: '---', debit: 0, credit: 0, exchangeRate: 1, baseDebit: 0, baseCredit: 0, costCenters: [] }]);
     };
 
     return (
@@ -652,39 +665,76 @@ const ReceiptsPage = () => {
                             <Table dir="rtl">
                                 <TableHeader>
                                     <TableRow className={cn("hover:bg-opacity-90 border-none transition-all", theme.tableHeader)}>
-                                        <TableHead className="text-right text-white font-black">الحساب</TableHead>
-                                        <TableHead className="text-center w-32 text-white font-black">مدين (+)</TableHead>
-                                        <TableHead className="text-center w-32 text-white font-black">دائن (-)</TableHead>
-                                        <TableHead className="text-center w-20 text-white font-black">العملة</TableHead>
-                                        <TableHead className="text-center w-32 text-white font-black">سعر الصرف</TableHead>
-                                        <TableHead className="w-10 text-white font-black"></TableHead>
+                                        <TableHead className="text-right text-white font-black min-w-[250px] h-8 py-0 text-xs">الحساب</TableHead>
+                                        <TableHead className="text-right text-white font-black min-w-[20px] h-8 py-0 text-xs">مركز التكلفة</TableHead>
+                                        <TableHead className="text-center w-40 text-white font-black h-8 py-0 text-xs">مدين (+)</TableHead>
+                                        <TableHead className="text-center w-40 text-white font-black h-8 py-0 text-xs">دائن (-)</TableHead>
+                                        <TableHead className="text-center w-20 text-white font-black h-8 py-0 text-xs">العملة</TableHead>
+                                        <TableHead className="text-center w-28 text-white font-black h-8 py-0 text-xs">سعر الصرف</TableHead>
+                                        <TableHead className="w-8 text-white font-black h-8 py-0"></TableHead>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
                                     {lines.map(line => (
-                                        <TableRow key={line.tempId} className="group">
-                                            <TableCell>
+                                        <TableRow key={line.tempId} className="group border-b border-border/40">
+                                            <TableCell className="py-0.5 px-1.5">
                                                 <SearchableAccountSelect
                                                     disabled={isViewOnly}
                                                     accounts={leafAccounts}
                                                     value={line.accountId}
                                                     onChange={(v: string) => updateLine(line.tempId, 'accountId', v)}
                                                     onAddNew={() => seIsActionModalOpen(true)}
+                                                    className="h-7 text-[10px]"
                                                 />
                                             </TableCell>
-                                            <TableCell><Input type="number" step="0.01" disabled={isViewOnly} value={line.debit || ''} onChange={(e) => updateLine(line.tempId, 'debit', Number(e.target.value))} className={cn("text-center font-bold focus-visible:ring-2", theme.accent.replace('text-', 'focus-visible:ring-'))} /></TableCell>
-                                            <TableCell><Input type="number" step="0.01" disabled={isViewOnly} value={line.credit || ''} onChange={(e) => updateLine(line.tempId, 'credit', Number(e.target.value))} className={cn("text-center font-bold focus-visible ring-2", theme.accent.replace('text-', 'focus-visible:ring-'))} /></TableCell>
-                                            <TableCell className="text-center font-black text-xs text-muted-foreground/80">{line.currencyCode}</TableCell>
-                                            <TableCell><Input type="number" step="0.000001" disabled={isViewOnly || (accounts.find(a => a.id === line.accountId)?.currency.isBase)} value={line.exchangeRate || ''} onChange={(e) => updateLine(line.tempId, 'exchangeRate', Number(e.target.value))} className="text-center font-mono text-xs" /></TableCell>
-                                            <TableCell>
+                                            <TableCell className="py-0.5 px-0.5">
+                                                {(line.costCenters && line.costCenters.length > 0) ? (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => !isViewOnly && setActiveLineForCc(line.tempId)}
+                                                        className={cn(
+                                                            "flex items-center gap-1.5 px-2 py-1 rounded-xl border transition-all text-[8px] font-black uppercase tracking-wider shadow-sm w-full h-7 justify-center",
+                                                            theme.accent, "bg-primary/5 border-primary/20 hover:scale-105 active:scale-95"
+                                                        )}
+                                                    >
+                                                        <APP_ICONS.NAV.COST_CENTERS size={10} />
+                                                        {line.costCenters.length === 1 
+                                                            ? (costCenters.find(c => c.id === line.costCenters[0].costCenterId)?.name || 'مركز')
+                                                            : `${line.costCenters.length} مراكز (${line.costCenters.reduce((sum: number, c: any) => sum + c.percentage, 0)}%)`}
+                                                    </button>
+                                                ) : (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => !isViewOnly && setActiveLineForCc(line.tempId)}
+                                                        className={cn(
+                                                            "w-full h-7 flex items-center justify-center rounded-xl border border-dashed transition-all group relative",
+                                                            accounts.find(a => a.id === line.accountId)?.code?.match(/^[45]/)
+                                                                ? "border-amber-400 bg-amber-50/50 text-amber-600 hover:border-amber-600 shadow-[0_0_10px_rgba(251,191,36,0.1)]"
+                                                                : "border-muted-foreground/30 text-muted-foreground/40 hover:border-primary/50 hover:text-primary bg-muted/5"
+                                                        )}
+                                                        title={accounts.find(a => a.id === line.accountId)?.code?.match(/^[45]/) ? "يرجى تعيين مركز تكلفة لهذا الحساب" : ""}
+                                                    >
+                                                        {accounts.find(a => a.id === line.accountId)?.code?.match(/^[45]/) ? (
+                                                            <APP_ICONS.STATE.WARNING size={12} className="animate-pulse" />
+                                                        ) : (
+                                                            <APP_ICONS.ACTIONS.ADD size={12} className="group-hover:rotate-90 transition-transform duration-300" />
+                                                        )}
+                                                    </button>
+                                                )}
+                                            </TableCell>
+                                            <TableCell className="py-0.5 px-0.5"><Input type="number" step="0.01" disabled={isViewOnly} value={line.debit || ''} onChange={(e) => updateLine(line.tempId, 'debit', Number(e.target.value))} className={cn("h-7 text-center text-[10px] font-bold focus-visible:ring-2", theme.accent.replace('text-', 'focus-visible:ring-'))} /></TableCell>
+                                            <TableCell className="py-0.5 px-0.5"><Input type="number" step="0.01" disabled={isViewOnly} value={line.credit || ''} onChange={(e) => updateLine(line.tempId, 'credit', Number(e.target.value))} className={cn("h-7 text-center text-[10px] font-bold focus-visible ring-2", theme.accent.replace('text-', 'focus-visible:ring-'))} /></TableCell>
+                                            <TableCell className="py-0.5 px-1 text-center font-black text-[8px] text-muted-foreground/80">{line.currencyCode}</TableCell>
+                                            <TableCell className="py-0.5 px-1"><Input type="number" step="0.000001" disabled={isViewOnly || (accounts.find(a => a.id === line.accountId)?.currency.isBase)} value={line.exchangeRate || ''} onChange={(e) => updateLine(line.tempId, 'exchangeRate', Number(e.target.value))} className="h-7 text-center font-mono text-[10px]" /></TableCell>
+                                            <TableCell className="py-0.5 px-2 text-center">
                                                 <Button
                                                     size="icon"
                                                     variant="ghost"
                                                     disabled={isViewOnly || lines.length <= 2}
                                                     onClick={() => setLines(lines.filter(l => l.tempId !== line.tempId))}
-                                                    className="opacity-0 group-hover:opacity-100 text-rose-500 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all"
+                                                    className="w-6 h-6 opacity-0 group-hover:opacity-100 text-rose-500 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all"
                                                 >
-                                                    <APP_ICONS.ACTIONS.DELETE size={14} />
+                                                    <APP_ICONS.ACTIONS.DELETE size={10} />
                                                 </Button>
                                             </TableCell>
                                         </TableRow>
@@ -853,6 +903,16 @@ const ReceiptsPage = () => {
                     attachments={viewAttachmentsEntry?.attachments || []}
                     title={`مرفقات السند رقم: ${viewAttachmentsEntry?.entryNumber}`}
                 />
+
+                {activeLineForCc && (
+                    <LineCostCenterModal
+                        lineId={activeLineForCc}
+                        currentDistributions={lines.find(l => l.tempId === activeLineForCc)?.costCenters || []}
+                        costCenters={costCenters}
+                        onSave={(dist) => updateLine(activeLineForCc, 'costCenters' as any, dist)}
+                        onClose={() => setActiveLineForCc(null)}
+                    />
+                )}
             </div>
         </ProtectedRoute>
     );

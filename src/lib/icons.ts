@@ -104,7 +104,8 @@ import {
     MoreHorizontal,
     Bell,
     ClipboardList,
-    BarChart4
+    BarChart4,
+    FolderOpen
 } from "lucide-react";
 
 /**
@@ -122,6 +123,7 @@ export const APP_ICONS = {
         SETTINGS: Settings,
         LOGOUT: LogOutIcon,
         ACCOUNTS: Library,
+        COST_CENTERS: Landmark,
         THEMES: Palette,
         DEFAULT: Lock,
     },
@@ -152,6 +154,7 @@ export const APP_ICONS = {
         ACCOUNTS_TREE: ListTree,
         ACCOUNT_FOLDER: Folder,
         ACCOUNT_LEAF: FileText,
+        
         
         // Settings
         GENERAL_SETTINGS: Settings,
@@ -245,7 +248,8 @@ export const APP_ICONS = {
         SEND: Send,
         FILTER_X: FilterX,
         CLOCK: Clock,
-        NOT_FOUND: SearchX
+        NOT_FOUND: SearchX,
+        SYNC: RefreshCw
     },
     
     // ─── Misc & State ────────────────────────────────────────────────────────
@@ -254,7 +258,11 @@ export const APP_ICONS = {
         WARNING: AlertTriangle,
         ERROR: XCircle,
         INFO: Info,
-        LOADING: Loader2
+        LOADING: Loader2,
+        EMPTY: Ghost,
+        FOLDER_OPEN: FolderOpen,
+        FILE_TEXT: FileText,
+        FORBIDDEN: ShieldAlert,
     },
 
     // ─── Shared Utilities ────────────────────────────────────────────────────

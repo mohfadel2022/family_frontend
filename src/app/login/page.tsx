@@ -44,7 +44,7 @@ const LoginPage = () => {
     const [loginId, setLoginId] = useState('');
     const [forgotState, setForgotState] = useState<'IDLE' | 'SUCCESS' | 'NO_EMAIL'>('IDLE');
 
-    const handleForgotSubmit = async (e: React.FormEvent) => {
+    const handleForgotSubmit = async (e: React.SyntheticEvent<HTMLFormElement>) => {
         e.preventDefault();
         setLoading(true);
         setError('');
@@ -62,7 +62,7 @@ const LoginPage = () => {
         }
     };
 
-    const handleSubmit = async (e: React.FormEvent) => {
+    const handleSubmit = async (e: React.SyntheticEvent<HTMLFormElement>) => {
         e.preventDefault();
         setError('');
         setLoading(true);

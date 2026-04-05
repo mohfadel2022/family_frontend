@@ -1,14 +1,14 @@
 "use client";
 
-import { useState, useEffect, Suspense } from 'react';
+import { useState, useEffect, Suspense, useMemo } from 'react';
 import { APP_ICONS } from '@/lib/icons';
+import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 import { DataTable } from '@/components/ui/data-table';
 import { ColumnDef } from '@tanstack/react-table';
 import axios from 'axios';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { PageHeader } from '@/components/ui/PageHeader';
-import { Button } from '@/components/ui/button';
 import { CustomButton } from '@/components/ui/CustomButton';
 import { Input } from '@/components/ui/input';
 import {
@@ -25,6 +25,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { ConfirmModal } from '@/components/ui/ConfirmModal';
 
 import { SUB_BASE, META_BASE, getAuthHeader } from '@/lib/api';
+
 
 const API_BASE = SUB_BASE;
 
@@ -48,11 +49,14 @@ function CollectPageContent() {
 
     // Form State
     const [year, setYear] = useState(new Date().getFullYear());
+    const [yearInput, setYearInput] = useState<string>(new Date().getFullYear().toString());
     const [selectedEntityId, setSelectedEntityId] = useState<string>('');
     const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
     const [debitAccountId, setDebitAccountId] = useState('');
     const [creditAccountId, setCreditAccountId] = useState('');
     const [description, setDescription] = useState('تحصيل اشتراكات سنوية');
+    const [mode, setMode] = useState<'AUTO' | 'MANUAL'>('AUTO');
+    const [selectedCurrencyId, setSelectedCurrencyId] = useState<string>('');
 
     const [isActionModalOpen, seIsActionModalOpen] = useState(false);
 
@@ -100,33 +104,41 @@ function CollectPageContent() {
                 try {
                     const curRes = await axios.get(`${META_BASE}/currencies`, getAuthHeader());
                     setCurrencies(curRes.data);
+                if (curRes.data.length > 0) {
                     const base = curRes.data.find((c: any) => c.isBase);
                     setBaseCurrency(base);
-                } catch (e) {
-                    console.warn("Currencies fetch failed, likely permission missing:", e);
+                    if (base && !selectedCurrencyId) setSelectedCurrencyId(base.id);
                 }
+            } catch (e) {
+                console.warn("Currencies fetch failed, likely permission missing:", e);
+            }
 
-                try {
-                    const branchRes = await axios.get(`${META_BASE}/branches`, getAuthHeader());
-                    setBranches(branchRes.data);
-                } catch (e) {
-                    console.warn("Branches fetch failed, likely permission missing:", e);
+            try {
+                const branchRes = await axios.get(`${META_BASE}/branches`, getAuthHeader());
+                setBranches(branchRes.data);
+            } catch (e) {
+                console.warn("Branches fetch failed, likely permission missing:", e);
+            }
+
+            if (collectionId) {
+                const collRes = await axios.get(`${API_BASE}/collections/${collectionId}`, getAuthHeader());
+                const coll = collRes.data;
+                setDate(coll.date.split('T')[0]);
+                setDescription(coll.description);
+                setDebitAccountId(coll.debitAccountId || '');
+                setCreditAccountId(coll.creditAccountId || '');
+                setCollectionStatus(coll.status);
+                setSelections(coll.items.map((it: any) => ({
+                    memberId: it.memberId,
+                    member: it.member,
+                    year: it.year,
+                    amount: it.amount
+                })));
+
+                // Set currency from debit account if available
+                if (coll.debitAccount?.currencyId) {
+                    setSelectedCurrencyId(coll.debitAccount.currencyId);
                 }
-
-                if (collectionId) {
-                    const collRes = await axios.get(`${API_BASE}/collections/${collectionId}`, getAuthHeader());
-                    const coll = collRes.data;
-                    setDate(coll.date.split('T')[0]);
-                    setDescription(coll.description);
-                    setDebitAccountId(coll.debitAccountId || '');
-                    setCreditAccountId(coll.creditAccountId || '');
-                    setCollectionStatus(coll.status);
-                    setSelections(coll.items.map((it: any) => ({
-                        memberId: it.memberId,
-                        member: it.member,
-                        year: it.year,
-                        amount: it.amount
-                    })));
 
                     // Recover the entity from the first member in the collection
                     if (coll.items.length > 0 && coll.items[0].member?.entityId) {
@@ -143,6 +155,11 @@ function CollectPageContent() {
         fetchInitial();
     }, [collectionId]);
 
+    // Handle initial year input sync
+    useEffect(() => {
+        if (year) setYearInput(year.toString());
+    }, [year]);
+
     useEffect(() => {
         if (selectedEntityId && year) {
             fetchDueMembers();
@@ -150,6 +167,10 @@ function CollectPageContent() {
     }, [selectedEntityId, year]);
 
     const fetchDueMembers = async () => {
+        if (!year || year < 2010 || year > 2100) {
+            toast.error("يرجى إدخال سنة صحيحة (2010 - 2100)");
+            return;
+        }
         setLoadingMembers(true);
         try {
             const res = await axios.get(`${API_BASE}/due`, {
@@ -166,7 +187,10 @@ function CollectPageContent() {
 
     const totalAmount = selections.reduce((sum, s) => sum + Number(s.amount), 0);
     const selectedEntity = entities.find(e => e.id === selectedEntityId);
-    const currencySymbol = selectedEntity?.currency?.symbol || baseCurrency?.symbol || '...';
+    
+    // Determine display currency
+    const collectionCurrency = currencies.find(c => c.id === selectedCurrencyId) || baseCurrency;
+    const currencySymbol = collectionCurrency?.symbol || '...';
 
     const handleCollect = async (status: 'DRAFT' | 'POSTED' = 'DRAFT') => {
         if (selections.length === 0) {
@@ -174,9 +198,28 @@ function CollectPageContent() {
             return;
         }
 
-        if (status === 'POSTED' && (!debitAccountId || !creditAccountId)) {
-            toast.error("بيانات الحسابات المدين والدائن مطلوبة للترحيل");
+        if (year < 2010 || year > 2100) {
+            toast.error("السنة يجب أن تكون بين 2010 و 2100");
             return;
+        }
+
+        if (status === 'POSTED') {
+            if (!debitAccountId || !creditAccountId) {
+                toast.error("بيانات الحسابات المدين والدائن مطلوبة للترحيل");
+                return;
+            }
+
+            const debitAcc = accounts.find(a => a.id === debitAccountId);
+            const creditAcc = accounts.find(a => a.id === creditAccountId);
+
+            if (debitAcc?.currencyId !== selectedCurrencyId) {
+                toast.error(`الحساب المدين يجب أن يكون بعملة ${collectionCurrency?.name}`);
+                return;
+            }
+            if (creditAcc?.currencyId !== selectedCurrencyId) {
+                toast.error(`الحساب الدائن يجب أن يكون بعملة ${collectionCurrency?.name}`);
+                return;
+            }
         }
 
         setIsSubmitting(true);
@@ -230,7 +273,7 @@ function CollectPageContent() {
         );
     };
 
-    const availableColumns: ColumnDef<any>[] = [
+    const availableColumns: ColumnDef<any>[] = useMemo(() => [
         {
             id: 'select',
             header: () => (
@@ -255,20 +298,20 @@ function CollectPageContent() {
 
                                 if (selectableMembers.length === 0) return;
 
-                                // If some already selected, check consistency with new batch
-                                const existingCurrencyId = selections.length > 0 ? selections[0].member.entity.currencyId : selectableMembers[0].entity.currencyId;
-
-                                const inconsistent = selectableMembers.filter(m => m.entity.currencyId !== existingCurrencyId);
-                                if (inconsistent.length > 0) {
-                                    if (selections.length > 0) {
-                                        toast.error("لا يمكن إضافة أعضاء بعملات مختلفة للسند نفسه");
-                                        return;
-                                    } else {
-                                        // If selecting all for first time and they are inconsistent
-                                        const currencies = new Set(selectableMembers.map(m => m.entity.currencyId));
-                                        if (currencies.size > 1) {
-                                            toast.error("القائمة تحتوي على أعضاء بعملات مختلفة، يرجى الاختيار يدوياً للسند الواحد");
+                                // Currency restriction only applies in AUTO mode
+                                if (mode === 'AUTO') {
+                                    const existingCurrencyId = selections.length > 0 ? selections[0].member.entity.currencyId : selectableMembers[0].entity.currencyId;
+                                    const inconsistent = selectableMembers.filter(m => m.entity.currencyId !== existingCurrencyId);
+                                    if (inconsistent.length > 0) {
+                                        if (selections.length > 0) {
+                                            toast.error("لا يمكن إضافة أعضاء بعملات مختلفة في الوضع التلقائي");
                                             return;
+                                        } else {
+                                            const currencies = new Set(selectableMembers.map(m => m.entity.currencyId));
+                                            if (currencies.size > 1) {
+                                                toast.error("القائمة تحتوي على أعضاء بعملات مختلفة، يرجى الاستخدام الوضع اليدوي أو الاختيار المنفرد");
+                                                return;
+                                            }
                                         }
                                     }
                                 }
@@ -304,6 +347,15 @@ function CollectPageContent() {
                                 if (isSelected) {
                                     setSelections(selections.filter(s => !(s.memberId === member.id && s.year === year)));
                                 } else {
+                                    // Currency restriction only applies in AUTO mode
+                                    if (mode === 'AUTO' && selections.length > 0) {
+                                        const existingCurrencyId = selections[0].member.entity.currencyId;
+                                        if (member.entity.currencyId !== existingCurrencyId) {
+                                            toast.error("لا يمكن إضافة أعضاء بعملات مختلفة في الوضع التلقائي");
+                                            return;
+                                        }
+                                    }
+
                                     setSelections([...selections, {
                                         memberId: member.id,
                                         member: member,
@@ -327,6 +379,35 @@ function CollectPageContent() {
             header: 'اسم العضو',
             cell: ({ row }) => <span className="font-bold text-foreground/80">{row.original.name}</span>
         },
+         ...(mode === 'MANUAL' ? [{
+            id: 'amount',
+            header: 'المبلغ',
+            cell: ({ row }: { row: any }) => {
+                const member = row.original;
+                const selection = selections.find((s: any) => s.memberId === member.id && s.year === year);
+                
+                if (!selection) return <span className="text-muted-foreground/30 font-mono text-[10px]">{Number(member.entity.annualSubscription).toLocaleString()}</span>;
+
+                return (
+                    <div className="flex items-center gap-1">
+                        <Input
+                            type="number"
+                            className="w-24 h-8 px-2 text-[10px] font-black text-center border-indigo-200 focus:border-indigo-500 rounded-lg"
+                            value={selection.amount}
+                            onChange={(e) => {
+                                const val = parseFloat(e.target.value);
+                                setSelections(selections.map((s: any) => 
+                                    (s.memberId === member.id && s.year === year) 
+                                        ? { ...s, amount: isNaN(val) ? 0 : val } 
+                                        : s
+                                ));
+                            }}
+                        />
+                        <span className="text-[8px] font-bold opacity-30 uppercase">{currencySymbol}</span>
+                    </div>
+                );
+            }
+        }] : []),
         {
             accessorKey: 'entity.name',
             header: 'الجهة',
@@ -354,13 +435,13 @@ function CollectPageContent() {
                     <div className={cn(
                         "px-2 py-0.5 rounded-full text-[9px] font-black inline-flex items-center gap-1 uppercase transition-all",
                         !isTerminatedInYear ? "bg-emerald-50 text-emerald-700 border border-emerald-100" :
-                            member.status === 'DECEASED' ? "bg-muted/50 text-muted-foreground/80 border border-input" :
+                            member.status === 'DECEASED' ? "bg-rose-50 text-rose-700 border border-rose-200 shadow-sm animate-pulse" :
                                 "bg-rose-50 text-rose-700 border border-rose-100"
                     )}>
                         {!isTerminatedInYear ? (
                             <><APP_ICONS.MODULES.STATUS.ACTIVE size={10} /> {member.status === 'ACTIVE' ? 'نشط' : 'نشط (سابقاً)'}</>
                         ) : member.status === 'DECEASED' ? (
-                            <><APP_ICONS.MODULES.STATUS.DECEASED size={10} /> متوفى {sYear ? `(${sYear})` : ''}</>
+                            <><APP_ICONS.MODULES.STATUS.DECEASED size={10} className="text-rose-600" /> متوفى {sYear ? `(${sYear})` : ''}</>
                         ) : (
                             <><APP_ICONS.MODULES.STATUS.INACTIVE size={10} /> متوقف {sYear ? `(${sYear})` : ''}</>
                         )}
@@ -368,7 +449,7 @@ function CollectPageContent() {
                 );
             }
         }
-    ];
+    ], [mode, year, selections, currencySymbol, dueMembers, collectionCurrency]);
 
     const groupedSelections = selections.reduce((acc: any[], s: any) => {
         const existing = acc.find(g => g.memberId === s.memberId);
@@ -459,6 +540,24 @@ function CollectPageContent() {
                 </div>
             </PageHeader>
 
+            {year > new Date().getFullYear() && (
+                <div className="bg-amber-50 border-2 border-amber-200 rounded-[2rem] p-6 flex items-center gap-6 animate-in slide-in-from-top-4 duration-500">
+                    <div className="w-14 h-14 rounded-2xl bg-amber-100 flex items-center justify-center text-amber-600 shrink-0 shadow-lg shadow-amber-200/50">
+                        <APP_ICONS.STATE.WARNING size={28} />
+                    </div>
+                    <div className="flex-1">
+                        <h3 className="text-lg font-black text-amber-900">تحذير: تحصيل دفعات مقدمة</h3>
+                        <p className="text-sm font-bold text-amber-700/80">
+                            أنت تقوم حالياً بالتحصيل لعام <span className="underline decoration-2 underline-offset-4">{year}</span>، وهو عام مستقبلي. 
+                            يرجى التأكد من صحة السنة والبيانات قبل إتمام عملية الترحيل.
+                        </p>
+                    </div>
+                    <div className="px-6 py-2 bg-amber-200/50 rounded-xl text-amber-800 font-black text-xs uppercase tracking-widest">
+                        Advance Payment
+                    </div>
+                </div>
+            )}
+
             <div className={cn("grid grid-cols-1 lg:grid-cols-3 gap-8", collectionStatus === 'POSTED' && "pointer-events-none opacity-80")}>
                 <div className="lg:col-span-1 space-y-6">
                     <section className="bg-card rounded-[2.5rem] border border-border p-8 shadow-sm space-y-6">
@@ -467,34 +566,93 @@ function CollectPageContent() {
                             <h2 className="font-black text-foreground/90 text-lg">معايير التحصيل</h2>
                         </div>
                         <div className="space-y-4">
+                            <div className="flex p-1 bg-muted rounded-2xl border border-border">
+                                <button
+                                    onClick={() => setMode('AUTO')}
+                                    className={cn(
+                                        "flex-1 py-2 px-4 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-2",
+                                        mode === 'AUTO' ? "bg-white shadow-sm text-indigo-600" : "text-muted-foreground hover:bg-muted-foreground/5"
+                                    )}
+                                >
+                                    <APP_ICONS.ACTIONS.REFRESH size={14} />
+                                    تلقائي
+                                </button>
+                                <button
+                                    onClick={() => setMode('MANUAL')}
+                                    className={cn(
+                                        "flex-1 py-2 px-4 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-2",
+                                        mode === 'MANUAL' ? "bg-white shadow-sm text-amber-600" : "text-muted-foreground hover:bg-muted-foreground/5"
+                                    )}
+                                >
+                                    <APP_ICONS.ACTIONS.EDIT size={14} />
+                                    يدوي
+                                </button>
+                            </div>
+
+                            {mode === 'MANUAL' && (
+                                <div className="space-y-2 animate-in fade-in slide-in-from-top-2 duration-300">
+                                    <label className="text-sm font-black text-amber-900/60">عملة التحصيل (Collection Currency)</label>
+                                    <Select value={selectedCurrencyId} onValueChange={setSelectedCurrencyId}>
+                                        <SelectTrigger className="h-12 rounded-xl border-amber-200 bg-amber-50/50 font-bold text-amber-900" dir="rtl">
+                                            <SelectValue placeholder="اختر العملة" />
+                                        </SelectTrigger>
+                                        <SelectContent dir="rtl">
+                                            {currencies.map(c => (
+                                                <SelectItem key={c.id} value={c.id}>{c.code} - {c.name}</SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                            )}
+
                             <div className="space-y-2">
                                 <label className="text-sm font-black text-muted-foreground">سنة الاستحقاق</label>
                                 <Input
                                     type="number"
-                                    value={year || ''}
-                                    onChange={e => {
-                                        const val = parseInt(e.target.value);
-                                        setYear(isNaN(val) ? 0 : val);
+                                    min={2010}
+                                    max={2100}
+                                    value={yearInput}
+                                    onChange={e => setYearInput(e.target.value)}
+                                    onBlur={() => {
+                                        const val = parseInt(yearInput);
+                                        if (isNaN(val) || val < 2010 || val > 2100) {
+                                            toast.error("الرجاء إدخال سنة صحيحة بين 2010 و 2100");
+                                            setYearInput(year.toString()); // Revert
+                                        } else {
+                                            setYear(val);
+                                        }
+                                    }}
+                                    onKeyDown={e => {
+                                        if (e.key === 'Enter') {
+                                            const val = parseInt(yearInput);
+                                            if (isNaN(val) || val < 2010 || val > 2100) {
+                                                toast.error("الرجاء إدخال سنة صحيحة بين 2010 و 2100");
+                                                setYearInput(year.toString()); // Revert
+                                            } else {
+                                                setYear(val);
+                                            }
+                                        }
                                     }}
                                     className="h-12 rounded-xl bg-muted/50 border-border font-black text-center text-lg"
                                 />
                             </div>
                             <div className="space-y-2">
-                                <label className="text-sm font-black text-muted-foreground">الجهة (Entity)</label>
+                                <label className="text-sm font-black text-muted-foreground">جهة التسديد (Payment Entity)</label>
                                 <Select
                                     value={selectedEntityId}
                                     onValueChange={(val) => {
-                                        if (selections.length > 0 && val !== selectedEntityId) {
-                                            toast.error("يرجى إفراغ القائمة قبل تغيير الجهة (يجب أن يكون التحصيل لجهة واحدة فقط)");
+                                        if (mode === 'AUTO' && selections.length > 0 && val !== selectedEntityId) {
+                                            toast.error("يرجى إفراغ القائمة قبل تغيير جهة التسديد في الوضع التلقائي");
                                             return;
                                         }
                                         setSelectedEntityId(val);
                                     }}
                                 >
                                     <SelectTrigger className="h-12 rounded-xl border-border bg-muted/50 font-bold" dir="rtl">
-                                        <SelectValue placeholder="اختر الجهة" />
+                                        <SelectValue placeholder="اختر جهة التسديد" />
                                     </SelectTrigger>
                                     <SelectContent dir="rtl">
+                                        <SelectItem value="ALL" className="font-black text-indigo-600">-- كافة الجهات --</SelectItem>
                                         {entities.map(e => (
                                             <SelectItem key={e.id} value={e.id}>{e.name}</SelectItem>
                                         ))}
@@ -649,7 +807,7 @@ function CollectPageContent() {
                                                 <div className="overflow-hidden">
                                                     <p className="font-black text-foreground/90 text-xs truncate">{group.member.name}</p>
                                                     <p className="text-[9px] text-muted-foreground/60 font-bold uppercase tracking-tight truncate">
-                                                        {group.member?.code} | {group.total.toLocaleString()} {group.member?.entity?.currency?.symbol || ''}
+                                                        {group.member?.code} | {group.total.toLocaleString()} {currencySymbol}
                                                     </p>
                                                 </div>
                                                 
@@ -729,13 +887,15 @@ function CollectPageContent() {
 
 export default function CollectPage() {
     return (
-        <Suspense fallback={
-            <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4">
-                <APP_ICONS.STATE.LOADING className="w-12 h-12 text-indigo-600 animate-spin" />
-                <p className="text-muted-foreground/80 font-black animate-pulse">جاري تحميل واجهة التحصيل...</p>
-            </div>
-        }>
-            <CollectPageContent />
-        </Suspense>
+        <ProtectedRoute permission="COLLECTS_VIEW">
+            <Suspense fallback={
+                <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4">
+                    <APP_ICONS.STATE.LOADING className="w-12 h-12 text-indigo-600 animate-spin" />
+                    <p className="text-muted-foreground/80 font-black animate-pulse">جاري تحميل واجهة التحصيل...</p>
+                </div>
+            }>
+                <CollectPageContent />
+            </Suspense>
+        </ProtectedRoute>
     );
 }

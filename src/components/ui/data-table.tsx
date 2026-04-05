@@ -87,12 +87,19 @@ export function DataTable<TData, TValue>({
     const theme = usePageTheme();
     const [sorting, setSorting] = React.useState<SortingState>([])
     const [globalFilter, setGlobalFilter] = React.useState(searchValue)
+    const [colVisibility, setColVisibility] = React.useState<VisibilityState>(columnVisibility || {})
 
     React.useEffect(() => {
         if (searchValue !== globalFilter) {
             setGlobalFilter(searchValue);
         }
     }, [searchValue]);
+
+    React.useEffect(() => {
+        if (columnVisibility !== undefined) {
+            setColVisibility(columnVisibility);
+        }
+    }, [columnVisibility]);
 
     const [pagination, setPagination] = React.useState({
         pageIndex: pageIndex ?? 0,
@@ -120,13 +127,16 @@ export function DataTable<TData, TValue>({
         onSortingChange: setSorting,
         getSortedRowModel: getSortedRowModel(),
         getFilteredRowModel: getFilteredRowModel(),
-        onColumnVisibilityChange: onColumnVisibilityChange,
+        onColumnVisibilityChange: (updater) => {
+            setColVisibility(updater);
+            if (onColumnVisibilityChange) onColumnVisibilityChange(updater);
+        },
         autoResetPageIndex: false,
         state: {
             sorting,
             globalFilter,
             pagination,
-            columnVisibility,
+            columnVisibility: colVisibility,
         },
         onGlobalFilterChange: handleGlobalFilterChange,
         onPaginationChange: (updater) => {

@@ -13,6 +13,7 @@ import {
     DropdownMenuSeparator,
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { toast } from 'sonner';
 import Link from 'next/link';
 import { ThemeToggle } from './ThemeToggle';
 import { useAuth, UserRole } from '@/context/AuthContext';
@@ -70,6 +71,18 @@ const Header = () => {
         }
     };
 
+    const handleMarkAsCompleted = async (e: React.MouseEvent, id: string) => {
+        e.stopPropagation();
+        try {
+            await axios.put(`${API_BASE}/notifications/${id}/complete`, {}, getAuthHeader());
+            setNotifications(prev => prev.map(n => n.id === id ? { ...n, isCompleted: true, isRead: true } : n));
+            toast.success("تم إنجاز المهمة");
+        } catch (error) {
+            console.error("Failed to mark as completed", error);
+            toast.error("فشل تحديث حالة المهمة");
+        }
+    };
+
     const handleMarkAllRead = async () => {
         try {
             await axios.put(`${API_BASE}/notifications/read-all`, {}, getAuthHeader());
@@ -98,41 +111,56 @@ const Header = () => {
     const isTask = (n: any) => n.category === 'TASK' || (!n.category && !isOp(n)) || n.type === 'AUDIT';
 
     const unreadOpCount = notifications.filter(n => !n.isRead && isOp(n)).length;
-    const unreadTaskCount = notifications.filter(n => !n.isRead && isTask(n)).length + (isBackupOverdue ? 1 : 0);
+    const unreadTaskCount = notifications.filter(n => !n.isRead && !n.isCompleted && isTask(n)).length + (isBackupOverdue ? 1 : 0);
     
     const opNotifications = notifications.filter(isOp);
-    const taskNotifications = notifications.filter(isTask);
+    const taskNotifications = notifications.filter(n => isTask(n) && !n.isCompleted);
 
     const renderNotificationItem = (notification: any) => (
         <DropdownMenuItem key={notification.id} asChild className="p-0 focus:bg-transparent cursor-pointer mb-1">
             <div 
                 onClick={() => handleMarkAsRead(notification.id, notification.link)}
                 className={cn(
-                    "flex items-start gap-3 p-3 mx-1 rounded-xl transition-colors group",
+                    "flex flex-col gap-1 p-3 mx-1 rounded-xl transition-colors group",
                     !notification.isRead ? "bg-blue-50/50 hover:bg-blue-50" : "hover:bg-muted/50 opacity-70 hover:opacity-100"
                 )}
             >
-                <div className={cn(
-                    "w-9 h-9 rounded-xl flex items-center justify-center shrink-0 shadow-inner group-hover:scale-110 transition-transform",
-                    !notification.isRead ? "bg-blue-100 text-blue-600" : "bg-slate-100 text-slate-500"
-                )}>
-                    {notification.type === 'MEMBER' && <APP_ICONS.SHARED.USER size={16} />}
-                    {notification.type === 'COLLECTION' && <APP_ICONS.MODULES.COLLECT size={16} />}
-                    {notification.type === 'RECEIPT' && <APP_ICONS.MODULES.RECEIPTS size={16} />}
-                    {notification.type === 'PAYMENT' && <APP_ICONS.MODULES.PAYMENTS size={16} />}
-                    {notification.type === 'JOURNAL' && <APP_ICONS.MODULES.JOURNAL size={16} />}
-                    {notification.type === 'AUDIT' && <APP_ICONS.MODULES.AUDIT size={16} />}
-                    {(!['MEMBER', 'COLLECTION', 'RECEIPT', 'PAYMENT', 'JOURNAL', 'AUDIT'].includes(notification.type)) && <APP_ICONS.SHARED.BELL size={16} />}
-                </div>
-                <div className="space-y-1 flex-1">
-                    <div className="flex justify-between items-center">
-                        <p className={cn("text-[13px] font-black leading-tight", !notification.isRead ? "text-blue-900" : "text-foreground")}>
-                            {notification.title}
-                        </p>
-                        {!notification.isRead && <span className="w-1.5 h-1.5 rounded-full bg-blue-500 shrink-0"></span>}
+                <div className="flex items-start gap-3">
+                    <div className={cn(
+                        "w-9 h-9 rounded-xl flex items-center justify-center shrink-0 shadow-inner group-hover:scale-110 transition-transform",
+                        !notification.isRead ? "bg-blue-100 text-blue-600" : "bg-slate-100 text-slate-500"
+                    )}>
+                        {notification.type === 'MEMBER' && <APP_ICONS.SHARED.USER size={16} />}
+                        {notification.type === 'COLLECTION' && <APP_ICONS.MODULES.COLLECT size={16} />}
+                        {notification.type === 'RECEIPT' && <APP_ICONS.MODULES.RECEIPTS size={16} />}
+                        {notification.type === 'PAYMENT' && <APP_ICONS.MODULES.PAYMENTS size={16} />}
+                        {notification.type === 'JOURNAL' && <APP_ICONS.MODULES.JOURNAL size={16} />}
+                        {notification.type === 'AUDIT' && <APP_ICONS.MODULES.AUDIT size={16} />}
+                        {(!['MEMBER', 'COLLECTION', 'RECEIPT', 'PAYMENT', 'JOURNAL', 'AUDIT'].includes(notification.type)) && <APP_ICONS.SHARED.BELL size={16} />}
                     </div>
-                    <p className="text-[10px] font-bold text-muted-foreground leading-relaxed line-clamp-2">{notification.message}</p>
+                    <div className="space-y-1 flex-1">
+                        <div className="flex justify-between items-center">
+                            <p className={cn("text-[13px] font-black leading-tight", !notification.isRead ? "text-blue-900" : "text-foreground")}>
+                                {notification.title}
+                            </p>
+                            {!notification.isRead && <span className="w-1.5 h-1.5 rounded-full bg-blue-500 shrink-0"></span>}
+                        </div>
+                        <p className="text-[10px] font-bold text-muted-foreground leading-relaxed line-clamp-2">{notification.message}</p>
+                    </div>
                 </div>
+
+                {/* Mark as Completed for tasks */}
+                {notification.category === 'TASK' && !notification.isCompleted && (
+                    <div className="mt-2 flex justify-end">
+                        <button 
+                            onClick={(e) => handleMarkAsCompleted(e, notification.id)}
+                            className="text-[9px] font-black text-rose-600 bg-rose-50 hover:bg-rose-100 px-3 py-1.5 rounded-lg border border-rose-100 flex items-center gap-1.5"
+                        >
+                            <APP_ICONS.STATE.SUCCESS size={12} />
+                            تحديد كمكتمل
+                        </button>
+                    </div>
+                )}
             </div>
         </DropdownMenuItem>
     );

@@ -98,11 +98,13 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
     const hasPermission = (roles: UserRole[]) => {
         if (!user) return false;
+        if (isAdmin) return true; // Power user has all roles
         return roles.includes(user.role);
     };
 
     const checkPermission = (code: string | string[]) => {
-        if (isAdmin) return true; // Power user
+        if (isAdmin) return true; // Power user has all permissions
+        if (!user) return false;
         if (Array.isArray(code)) {
             return code.some(c => user?.permissions?.includes(c));
         }

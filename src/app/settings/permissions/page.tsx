@@ -5,7 +5,6 @@ import { APP_ICONS } from '@/lib/icons';
 import { cn } from '@/lib/utils';
 import { usePageTheme } from '@/hooks/usePageTheme';
 import { PageHeader } from '@/components/ui/PageHeader';
-import { UnauthorizedAccess } from '@/components/ui/UnauthorizedAccess';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 
@@ -19,6 +18,7 @@ import { WithPermission } from '@/components/auth/WithPermission';
 
 import { META_BASE, getAuthHeader } from '@/lib/api';
 import { getCategoryIcon, getActionIcon } from '@/lib/permissions';
+import { getAllNavPermissions, NavPermissionEntry } from '@/lib/nav';
 
 const API_BASE = META_BASE;
 
@@ -41,6 +41,11 @@ export default function PermissionsPage() {
     const [submitting, setSubmitting] = useState(false);
     const [editingPerm, setEditingPerm] = useState<Permission | null>(null);
 
+    // ── Sync state ──────────────────────────────────────────────────────────────
+    const [showSyncPanel, setShowSyncPanel] = useState(false);
+    const [syncing, setSyncing] = useState(false);
+    const [selectedMissing, setSelectedMissing] = useState<Set<string>>(new Set());
+
     const [formData, setFormData] = useState({
         code: '',
         name: '',
@@ -59,7 +64,6 @@ export default function PermissionsPage() {
         { suffix: 'EXPORT', label: 'تصدير', icon: APP_ICONS.ACTIONS.EXPORT },
     ];
 
-    // Hooks must be at the top level
     const [activeTab, setActiveTab] = useState<string | null>(null);
 
     const filteredPermissions = permissions.filter(p =>
@@ -113,8 +117,6 @@ export default function PermissionsPage() {
         setExpandedGroups(newExpanded);
     };
 
-    // Hooks must be at the top level
-
     const fetchPermissions = async () => {
         if (!isAdmin && !checkPermission('PERMISSIONS_VIEW')) {
             setLoading(false);
@@ -142,6 +144,70 @@ export default function PermissionsPage() {
         fetchPermissions();
     }, [isAdmin]);
 
+    // ── Compute missing permissions ──────────────────────────────────────────────
+    const allNavPerms = getAllNavPermissions();
+    const dbCodes = new Set(permissions.map(p => p.code));
+    const missingPerms: NavPermissionEntry[] = allNavPerms.filter(p => !dbCodes.has(p.code));
+
+    // Group missing by category
+    const missingByCategory = missingPerms.reduce((acc, p) => {
+        const cat = p.category.split('/')[0].trim();
+        if (!acc[cat]) acc[cat] = [];
+        acc[cat].push(p);
+        return acc;
+    }, {} as Record<string, NavPermissionEntry[]>);
+
+    const toggleSelectMissing = (code: string) => {
+        setSelectedMissing(prev => {
+            const next = new Set(prev);
+            if (next.has(code)) next.delete(code);
+            else next.add(code);
+            return next;
+        });
+    };
+
+    const toggleSelectAll = () => {
+        if (selectedMissing.size === missingPerms.length) {
+            setSelectedMissing(new Set());
+        } else {
+            setSelectedMissing(new Set(missingPerms.map(p => p.code)));
+        }
+    };
+
+    const handleSyncSelected = async () => {
+        if (selectedMissing.size === 0) {
+            toast.error('يرجى تحديد صلاحية واحدة على الأقل');
+            return;
+        }
+        setSyncing(true);
+        const toCreate = missingPerms.filter(p => selectedMissing.has(p.code));
+        let created = 0;
+        let failed = 0;
+        try {
+            await Promise.all(
+                toCreate.map(async (p) => {
+                    try {
+                        await axios.post(`${API_BASE}/permissions`, {
+                            code: p.code,
+                            name: p.name,
+                            category: p.category,
+                            description: ''
+                        }, getAuthHeader());
+                        created++;
+                    } catch {
+                        failed++;
+                    }
+                })
+            );
+            if (created > 0) toast.success(`تم إضافة ${created} صلاحية بنجاح`);
+            if (failed > 0) toast.error(`فشل إضافة ${failed} صلاحية`);
+            setSelectedMissing(new Set());
+            await fetchPermissions();
+        } finally {
+            setSyncing(false);
+        }
+    };
+
     const handleDelete = async (id: string) => {
         if (!confirm('هل أنت متأكد من رغبتك في حذف هذا المفتاح؟')) return;
         try {
@@ -162,8 +228,6 @@ export default function PermissionsPage() {
             </div>
         );
     }
-
-
 
     const handleOpenModal = (perm: Permission | null = null) => {
         if (perm) {
@@ -231,15 +295,6 @@ export default function PermissionsPage() {
         }
     };
 
-
-
-
-    // Grouping by category
-    const categories = Array.from(new Set(permissions.map(p => p.category)));
-
-    // Using getCategoryIcon from @/lib/permissions
-
-
     return (
         <ProtectedRoute permission="PERMISSIONS_VIEW">
             <div className="max-w-7xl mx-auto space-y-6 animate-in fade-in duration-500 pb-12" dir="rtl">
@@ -249,7 +304,29 @@ export default function PermissionsPage() {
                     description="عرض وتعديل كافة الأذونات المتاحة في النظام وتصنيفها حسب الموديولات"
                     iconClassName="bg-gradient-to-br from-indigo-700 to-indigo-900 shadow-indigo-100"
                 >
-                    <div className="flex gap-4">
+                    <div className="flex gap-3 flex-wrap">
+                        {/* Sync button */}
+                        <WithPermission permission="PERMISSIONS_CREATE">
+                            <Button
+                                onClick={() => setShowSyncPanel(prev => !prev)}
+                                variant="outline"
+                                className={cn(
+                                    "h-12 px-5 rounded-2xl font-bold flex gap-2 items-center border-2 transition-all",
+                                    showSyncPanel
+                                        ? "border-amber-400 bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400"
+                                        : "border-border text-muted-foreground hover:border-amber-300 hover:text-amber-600"
+                                )}
+                            >
+                                <APP_ICONS.ACTIONS.SYNC size={18} />
+                                مزامنة صلاحيات الصفحات
+                                {missingPerms.length > 0 && (
+                                    <span className="bg-amber-500 text-white text-xs font-black px-2 py-0.5 rounded-full ml-1">
+                                        {missingPerms.length}
+                                    </span>
+                                )}
+                            </Button>
+                        </WithPermission>
+
                         <div className="relative group">
                             <APP_ICONS.ACTIONS.SEARCH className={cn("absolute right-4 top-1/2 -translate-y-1/2 text-muted-foreground/60 transition-colors", theme.accent.replace('text-', 'group-hover:text-'))} size={18} />
                             <Input
@@ -270,6 +347,191 @@ export default function PermissionsPage() {
                         </WithPermission>
                     </div>
                 </PageHeader>
+
+                {/* ── Sync Panel ─────────────────────────────────────────────────────────── */}
+                {showSyncPanel && (
+                    <div className="animate-in slide-in-from-top-4 fade-in duration-300">
+                        <div className="rounded-[2rem] border-2 border-amber-200 bg-amber-50/50 dark:bg-amber-900/10 dark:border-amber-700/40 overflow-hidden">
+                            {/* Header */}
+                            <div className="flex items-center justify-between p-6 border-b border-amber-200/60 dark:border-amber-700/30">
+                                <div className="flex items-center gap-4">
+                                    <div className="w-10 h-10 rounded-2xl bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center text-amber-600">
+                                        <APP_ICONS.ACTIONS.SYNC size={20} />
+                                    </div>
+                                    <div>
+                                        <h2 className="font-black text-foreground/90 text-base">مزامنة صلاحيات الصفحات مع قاعدة البيانات</h2>
+                                        <p className="text-xs text-muted-foreground/70 mt-0.5">
+                                            المقارنة بين صلاحيات التطبيق الحالية وما هو مسجل في قاعدة البيانات
+                                        </p>
+                                    </div>
+                                </div>
+                                {/* Stats summary */}
+                                <div className="flex items-center gap-4 text-sm">
+                                    <div className="flex items-center gap-2 px-3 py-1.5 bg-emerald-100 dark:bg-emerald-900/30 rounded-xl">
+                                        <div className="w-2 h-2 rounded-full bg-emerald-500" />
+                                        <span className="font-black text-emerald-700 dark:text-emerald-400">{dbCodes.size} موجودة</span>
+                                    </div>
+                                    <div className={cn(
+                                        "flex items-center gap-2 px-3 py-1.5 rounded-xl",
+                                        missingPerms.length > 0
+                                            ? "bg-amber-100 dark:bg-amber-900/30"
+                                            : "bg-muted/50"
+                                    )}>
+                                        <div className={cn("w-2 h-2 rounded-full", missingPerms.length > 0 ? "bg-amber-500" : "bg-muted-foreground/30")} />
+                                        <span className={cn("font-black", missingPerms.length > 0 ? "text-amber-700 dark:text-amber-400" : "text-muted-foreground/60")}>
+                                            {missingPerms.length} ناقصة
+                                        </span>
+                                    </div>
+                                    <div className="flex items-center gap-2 px-3 py-1.5 bg-muted/30 rounded-xl">
+                                        <span className="font-black text-muted-foreground/70">{allNavPerms.length} إجمالي</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {missingPerms.length === 0 ? (
+                                /* All synced  ✅ */
+                                <div className="flex flex-col items-center justify-center py-16 gap-4">
+                                    <div className="w-16 h-16 rounded-3xl bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center text-emerald-500">
+                                        <APP_ICONS.STATE.SUCCESS size={36} />
+                                    </div>
+                                    <div className="text-center">
+                                        <p className="font-black text-lg text-foreground/80">جميع الصلاحيات متزامنة!</p>
+                                        <p className="text-xs text-muted-foreground/60 mt-1">لا توجد صلاحيات مفقودة في قاعدة البيانات.</p>
+                                    </div>
+                                </div>
+                            ) : (
+                                /* Missing list */
+                                <div className="p-6 space-y-6">
+                                    {/* Bulk actions bar */}
+                                    <div className="flex items-center justify-between">
+                                        <button
+                                            onClick={toggleSelectAll}
+                                            className="flex items-center gap-2 text-sm font-black text-muted-foreground/70 hover:text-foreground transition-colors"
+                                        >
+                                            <div className={cn(
+                                                "w-4 h-4 rounded border-2 flex items-center justify-center transition-all",
+                                                selectedMissing.size === missingPerms.length
+                                                    ? "bg-amber-500 border-amber-500 text-white"
+                                                    : "border-muted-foreground/30"
+                                            )}>
+                                                {selectedMissing.size === missingPerms.length && (
+                                                    <APP_ICONS.STATE.SUCCESS size={10} />
+                                                )}
+                                            </div>
+                                            {selectedMissing.size === missingPerms.length ? 'إلغاء تحديد الكل' : 'تحديد الكل'}
+                                        </button>
+
+                                        <WithPermission permission="PERMISSIONS_CREATE">
+                                            <Button
+                                                onClick={handleSyncSelected}
+                                                disabled={syncing || selectedMissing.size === 0}
+                                                className="bg-amber-500 hover:bg-amber-600 text-white rounded-xl h-10 px-5 font-black flex gap-2 items-center shadow-lg shadow-amber-200/50 dark:shadow-amber-900/30 disabled:opacity-50"
+                                            >
+                                                {syncing
+                                                    ? <APP_ICONS.STATE.LOADING className="animate-spin" size={16} />
+                                                    : <APP_ICONS.ACTIONS.ADD size={16} />
+                                                }
+                                                إضافة المحددة ({selectedMissing.size})
+                                            </Button>
+                                        </WithPermission>
+                                    </div>
+
+                                    {/* Missing permissions grouped by category */}
+                                    <div className="space-y-4">
+                                        {Object.entries(missingByCategory).map(([cat, perms]) => {
+                                            const CatIcon = getCategoryIcon(cat);
+                                            return (
+                                                <div key={cat} className="bg-card rounded-2xl border border-border/50 overflow-hidden">
+                                                    <div className="flex items-center gap-3 px-4 py-3 bg-muted/30 border-b border-border/30">
+                                                        <CatIcon size={14} className="text-amber-500 shrink-0" />
+                                                        <span className="text-xs font-black text-foreground/70">{cat}</span>
+                                                        <span className="text-[10px] bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 px-2 py-0.5 rounded-full font-black">{perms.length}</span>
+                                                    </div>
+                                                    <div className="p-3 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
+                                                        {perms.map(perm => {
+                                                            const ActionIcon = getActionIcon(perm.code);
+                                                            const isChecked = selectedMissing.has(perm.code);
+                                                            return (
+                                                                <button
+                                                                    key={perm.code}
+                                                                    onClick={() => toggleSelectMissing(perm.code)}
+                                                                    className={cn(
+                                                                        "flex items-center gap-2 p-2 rounded-xl border-2 transition-all text-right group",
+                                                                        isChecked
+                                                                            ? "border-amber-400 bg-amber-50 dark:bg-amber-900/20"
+                                                                            : "border-transparent bg-muted/30 hover:bg-muted/60 hover:border-muted"
+                                                                    )}
+                                                                >
+                                                                    <div className={cn(
+                                                                        "w-4 h-4 rounded border-2 shrink-0 flex items-center justify-center transition-all",
+                                                                        isChecked
+                                                                            ? "bg-amber-500 border-amber-500 text-white"
+                                                                            : "border-muted-foreground/30 group-hover:border-amber-300"
+                                                                    )}>
+                                                                        {isChecked && <APP_ICONS.STATE.SUCCESS size={8} />}
+                                                                    </div>
+                                                                    <div className={cn(
+                                                                        "w-6 h-6 rounded-lg flex items-center justify-center shrink-0",
+                                                                        isChecked ? "bg-amber-100 text-amber-600 dark:bg-amber-900/40" : "bg-muted text-muted-foreground/50"
+                                                                    )}>
+                                                                        <ActionIcon size={12} />
+                                                                    </div>
+                                                                    <div className="flex-1 min-w-0 text-right">
+                                                                        <p className="text-[11px] font-black text-foreground/80 truncate">{perm.name}</p>
+                                                                        <code className="text-[8px] text-muted-foreground/40 truncate block font-mono">
+                                                                            {perm.code.split('_').pop()}
+                                                                        </code>
+                                                                    </div>
+                                                                </button>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+
+                                    {/* Bottom bulk add */}
+                                    <div className="flex justify-end pt-2">
+                                        <WithPermission permission="PERMISSIONS_CREATE">
+                                            <Button
+                                                onClick={() => {
+                                                    setSelectedMissing(new Set(missingPerms.map(p => p.code)));
+                                                    setTimeout(handleSyncSelected, 100);
+                                                }}
+                                                disabled={syncing}
+                                                variant="outline"
+                                                className="rounded-xl h-10 px-5 font-black flex gap-2 items-center border-amber-300 text-amber-700 hover:bg-amber-50 dark:text-amber-400 dark:border-amber-700 dark:hover:bg-amber-900/20"
+                                            >
+                                                {syncing
+                                                    ? <APP_ICONS.STATE.LOADING className="animate-spin" size={16} />
+                                                    : <APP_ICONS.ACTIONS.PLUS_SQUARE size={16} />
+                                                }
+                                                إضافة جميع الناقصة ({missingPerms.length})
+                                            </Button>
+                                        </WithPermission>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                )}
+
+                {/* ── DB Permissions — All synced status bar ─────────────────────────────── */}
+                {!showSyncPanel && missingPerms.length > 0 && (
+                    <div
+                        onClick={() => setShowSyncPanel(true)}
+                        className="flex items-center gap-3 p-3 px-4 bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-700/40 rounded-2xl cursor-pointer hover:bg-amber-100 dark:hover:bg-amber-900/20 transition-all group"
+                    >
+                        <APP_ICONS.STATE.WARNING size={16} className="text-amber-500 shrink-0" />
+                        <p className="text-sm font-bold text-amber-700 dark:text-amber-400 flex-1">
+                            يوجد <span className="font-black">{missingPerms.length}</span> صلاحية غير مسجلة في قاعدة البيانات
+                        </p>
+                        <span className="text-xs font-black text-amber-600 dark:text-amber-400 group-hover:underline">
+                            عرض التفاصيل ←
+                        </span>
+                    </div>
+                )}
 
                 {/* Tabs Navigation */}
                 <div className="flex items-center gap-2 overflow-x-auto pb-4 no-scrollbar px-2">
@@ -326,16 +588,6 @@ export default function PermissionsPage() {
                 <div className="space-y-14 pt-4">
                     {activeTab && groupedPermissions[activeTab] && (
                         <div className="space-y-8 animate-in slide-in-from-bottom-4 fade-in duration-500">
-                            {/* View Header (Mini version since we have tabs)
-                        <div className="flex items-center gap-4 px-4">
-                            <div className="flex-1 h-px bg-gradient-to-l from-indigo-100 to-transparent" />
-                            <div className="flex items-center gap-3 px-6 py-2 bg-indigo-50 rounded-full border border-indigo-100">
-                                {React.createElement(getCategoryIcon(activeTab), { size: 16, className: "text-indigo-600" })}
-                                <span className="text-sm font-black text-indigo-900">{activeTab}</span>
-                            </div>
-                            <div className="flex-1 h-px bg-gradient-to-r from-indigo-100 to-transparent" />
-                        </div> */}
-
                             {/* Action Groups */}
                             <div className="grid grid-cols-1 gap-4">
                                 {Object.entries(groupedPermissions[activeTab]).map(([subGroup, perms]) => {

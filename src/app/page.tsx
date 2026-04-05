@@ -164,12 +164,24 @@ const Dashboard = () => {
 
                 <div className="min-h-[400px]">
                     {activeTab === 'summary' && (
-                        <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-
-                            <div className="space-y-8">
+                        <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                            <CollapsibleSection 
+                                title="نظرة عامة على الاشتراكات" 
+                                icon={APP_ICONS.MODULES.ENTITIES}
+                                defaultOpen={true}
+                                accentColor="bg-blue-600"
+                            >
                                 <MembershipDashboard data={dashboardData} loading={loading} variant="summary" />
+                            </CollapsibleSection>
+
+                            <CollapsibleSection 
+                                title="نظرة عامة على الأداء المالي" 
+                                icon={APP_ICONS.MODULES.JOURNAL}
+                                defaultOpen={true}
+                                accentColor="bg-emerald-600"
+                            >
                                 <FinancialDashboard data={dashboardData} loading={loading} variant="summary" />
-                            </div>
+                            </CollapsibleSection>
                         </div>
                     )}
 
@@ -185,4 +197,29 @@ const Dashboard = () => {
         </div>
     );
 };
+const CollapsibleSection = ({ title, icon, children, defaultOpen = true, accentColor }: any) => {
+    const [isOpen, setIsOpen] = useState(defaultOpen);
+    return (
+        <div className="bg-card/30 rounded-[2.5rem] border border-border/50 overflow-hidden transition-all duration-500">
+            <button 
+                onClick={() => setIsOpen(!isOpen)}
+                className="w-full flex items-center justify-between p-6 hover:bg-muted/30 transition-colors"
+            >
+                <div className="flex items-center gap-4">
+                    <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center text-white shadow-lg shadow-blue-500/10", accentColor || "bg-blue-600")}>
+                        {React.createElement(icon, { size: 18 })}
+                    </div>
+                    <h3 className="text-lg font-black text-foreground">{title}</h3>
+                </div>
+                <div className={cn("transition-transform duration-300", isOpen ? "rotate-180" : "")}>
+                    <APP_ICONS.ACTIONS.CHEVRON_DOWN size={20} className="text-muted-foreground" />
+                </div>
+            </button>
+            <div className={cn("transition-all duration-500 ease-in-out px-6 overflow-hidden", isOpen ? "max-h-[2000px] pb-8 opacity-100" : "max-h-0 opacity-0")}>
+                {children}
+            </div>
+        </div>
+    );
+};
+
 export default Dashboard;

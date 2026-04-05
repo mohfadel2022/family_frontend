@@ -22,7 +22,7 @@ export const UserProfileModal = ({ isOpen, onClose }: UserProfileModalProps) => 
     const [username, setUsername] = useState(user?.username || "");
     const [loading, setLoading] = useState(false);
 
-    const handleSubmit = async (e: React.FormEvent) => {
+    const handleSubmit = async (e: React.SyntheticEvent<HTMLFormElement>) => {
         e.preventDefault();
         setLoading(true);
 

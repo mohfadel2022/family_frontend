@@ -157,7 +157,11 @@ const MyPdfDocument = ({
                             { flex: columnFlexes[i] || (i === 0 ? 3 : i === pHeaders.length - 1 ? 2 : 1) },
                             columnStyles[i] ? { backgroundColor: columnStyles[i] } : {}
                         ]}>
-                            <Text style={[pdfStyles.tableHeaderText, columnAligns[i] ? { textAlign: columnAligns[i] } : {}]}>{header}</Text>
+                            <Text style={[
+                                pdfStyles.tableHeaderText, 
+                                columnAligns[i] ? { textAlign: columnAligns[i] } : {},
+                                columnStyles[i] ? { color: '#ffffff' } : {}
+                            ]}>{header}</Text>
                         </View>
                     ))}
                 </View>
@@ -165,9 +169,10 @@ const MyPdfDocument = ({
                     const rowStyle = row._rowStyle || {};
                     const firstCell = row[0];
                     const firstText = (firstCell && typeof firstCell === 'object') ? (firstCell.text || '') : String(firstCell || '');
-                    const isSummaryRow = firstText.includes('إجمالي') || firstText.includes('المجموع') || !!row._rowStyle;
+                    const isSummaryRow = firstText.includes('إجمالي') || firstText.includes('المجموع') || rowStyle.isSummary;
+                    const isBoldRow = isSummaryRow || rowStyle.isBold;
                     const rowBgColor = rowStyle.bgColor || (isSummaryRow ? '' : (i % 2 === 0 ? '' : '#f9fafb'));
-                    const rowFont = (isSummaryRow ? 'AlmaraiBold' : 'Almarai');
+                    const rowFont = (isBoldRow ? 'AlmaraiBold' : 'Almarai');
 
                     return (
                         <View key={i} style={[
@@ -188,7 +193,8 @@ const MyPdfDocument = ({
                                         <View key={j} style={[
                                             pdfStyles.tableCol,
                                             { flex: columnFlexes[j] || (j === 0 ? 3 : j === pHeaders.length - 1 ? 2 : 1) },
-                                            cellBg ? { backgroundColor: cellBg } : {}
+                                            cellBg ? { backgroundColor: cellBg } : {},
+                                            (isNameCol && rowStyle.indent) ? { paddingRight: rowStyle.indent } : {}
                                         ]}>
                                             <View style={{ 
                                                 flexDirection: 'row-reverse', 

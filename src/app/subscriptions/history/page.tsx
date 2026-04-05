@@ -25,7 +25,6 @@ import { SUB_BASE, META_BASE, getAuthHeader } from '@/lib/api';
 import { APP_ICONS } from '@/lib/icons';
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 import { WithPermission } from '@/components/auth/WithPermission';
-import { useAuth } from '@/context/AuthContext';
 import { CustomButton } from '@/components/ui/CustomButton';
 
 const API_BASE = SUB_BASE;
@@ -228,13 +227,11 @@ export default function CollectHistoryPage() {
                     icon={HistoryIcon}
                     title="سجلات التحصيل"
                     description="استعراض وإدارة جميع عمليات التحصيل المجمعة"
-                    iconClassName="bg-gradient-to-br from-indigo-500 to-indigo-700"
                 >
                     <WithPermission permission="COLLECTS_CREATE">
                         <CustomButton
                             icon={APP_ICONS.MODULES.COLLECT}
                             onClick={() => router.push('/subscriptions/collect')}
-                            className="bg-indigo-600 hover:bg-indigo-700 shadow-indigo-100"
                         >
                             تحصيل جديد
                         </CustomButton>
@@ -242,7 +239,7 @@ export default function CollectHistoryPage() {
                 </PageHeader>
 
                 <section className="bg-card rounded-[2.5rem] border border-border shadow-sm overflow-hidden">
-                    <div className="p-8 border-b border-border/50 flex justify-between items-center bg-muted/30">
+                    {/* <div className="p-8 border-b border-border/50 flex justify-between items-center bg-muted/30">
                         <div className="flex items-center gap-3">
                             <div className="p-3 bg-card rounded-2xl text-indigo-600 shadow-sm border border-border">
                                 <FileText size={24} />
@@ -252,7 +249,7 @@ export default function CollectHistoryPage() {
                                 <p className="text-[10px] text-muted-foreground/60 font-bold uppercase tracking-widest">Subscription Collection Batches</p>
                             </div>
                         </div>
-                    </div>
+                    </div> */}
 
                     <div className="p-8">
                         <DataTable

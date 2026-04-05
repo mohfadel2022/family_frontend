@@ -40,12 +40,12 @@ export const AccountForm = ({ account, accounts, currencies, branches, onClose, 
         if (formData.parentId && formData.parentId !== 'null') {
             const parent = accounts.find(a => a.id === formData.parentId);
             if (parent && parent.type !== formData.type) {
-                setFormData(prev => ({ ...prev, type: parent.type }));
+                setFormData((prev: any) => ({ ...prev, type: parent.type }));
             }
         }
     }, [formData.parentId, accounts]);
 
-    const handleSubmit = async (e: React.FormEvent) => {
+    const handleSubmit = async (e: React.SyntheticEvent<HTMLFormElement>) => {
         e.preventDefault();
         setLoading(true);
         try {

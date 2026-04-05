@@ -24,10 +24,9 @@ import { ActionModal } from '@/components/ui/ActionModal';
 import { DataTable } from '@/components/ui/data-table';
 import { ColumnDef, VisibilityState } from '@tanstack/react-table';
 
-import { SUB_BASE, getAuthHeader } from '@/lib/api';
+import { SUB_BASE, META_BASE, getAuthHeader } from '@/lib/api';
 
 const API_BASE = SUB_BASE;
-const AUTH_HEADER = getAuthHeader();
 
 import { useSearchParams, useRouter } from 'next/navigation';
 
@@ -43,6 +42,7 @@ function MembersPageContent() {
     const urlPaid = searchParams.get('paid') === 'true';
     const urlSearch = searchParams.get('search') || '';
     const urlEntity = searchParams.get('entity') || 'all';
+    const urlEntityFilterType = searchParams.get('entityType') || 'residence';
     const urlPage = Number(searchParams.get('page')) || 0;
 
     const [members, setMembers] = useState<any[]>([]);
@@ -50,6 +50,7 @@ function MembersPageContent() {
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState(urlSearch);
     const [selectedEntity, setSelectedEntity] = useState<string>(urlEntity);
+    const [entityFilterType, setEntityFilterType] = useState<'residence' | 'payment'>(urlEntityFilterType as 'residence' | 'payment');
     const [selectedStatus, setSelectedStatus] = useState<string>(urlStatus || 'all');
     const [showOnlyDue, setShowOnlyDue] = useState(urlDue);
     const [filterYear, setFilterYear] = useState<number>(urlYear ? Number(urlYear) : new Date().getFullYear());
@@ -63,6 +64,8 @@ function MembersPageContent() {
     const [editingMember, setEditingMember] = useState<any>(null);
     const [memberToDelete, setMemberToDelete] = useState<any>(null);
     const [isDeleting, setIsDeleting] = useState(false);
+    const [isViewModalOpen, setIsViewModalOpen] = useState(false);
+    const [viewingMember, setViewingMember] = useState<any>(null);
     const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({});
 
     // Sync state to URL params
@@ -74,23 +77,24 @@ function MembersPageContent() {
         if (filterYear !== new Date().getFullYear()) params.set('year', filterYear.toString());
         if (searchTerm) params.set('search', searchTerm);
         if (selectedEntity !== 'all') params.set('entity', selectedEntity);
+        if (entityFilterType !== 'residence') params.set('entityType', entityFilterType);
         if (pageIndex > 0) params.set('page', pageIndex.toString());
 
         const queryString = params.toString();
         router.replace(queryString ? `?${queryString}` : window.location.pathname, { scroll: false });
-    }, [selectedStatus, showOnlyDue, showOnlyPaid, filterYear, searchTerm, selectedEntity, pageIndex, router]);
+    }, [selectedStatus, showOnlyDue, showOnlyPaid, filterYear, searchTerm, selectedEntity, entityFilterType, pageIndex, router]);
 
     // Reset pageIndex when any filter changes
     useEffect(() => {
         setPageIndex(0);
-    }, [selectedStatus, showOnlyDue, showOnlyPaid, filterYear, searchTerm, selectedEntity]);
+    }, [selectedStatus, showOnlyDue, showOnlyPaid, filterYear, searchTerm, selectedEntity, entityFilterType]);
 
     const fetchData = async () => {
         setLoading(true);
         try {
             const [memRes, entRes] = await Promise.all([
-                axios.get(`${API_BASE}/members`, AUTH_HEADER),
-                axios.get(`${API_BASE}/entities`, AUTH_HEADER)
+                axios.get(`${API_BASE}/members`, getAuthHeader()),
+                axios.get(`${API_BASE}/entities`, getAuthHeader())
             ]);
             setMembers(memRes.data);
             setEntities(entRes.data);
@@ -109,7 +113,7 @@ function MembersPageContent() {
         if (!memberToDelete) return;
         setIsDeleting(true);
         try {
-            await axios.delete(`${API_BASE}/members/${memberToDelete.id}`, AUTH_HEADER);
+            await axios.delete(`${API_BASE}/members/${memberToDelete.id}`, getAuthHeader());
             toast.success('تم حذف العضو بنجاح');
             setMemberToDelete(null);
             fetchData();
@@ -120,7 +124,11 @@ function MembersPageContent() {
         }
     };
 
-    const membersForEntity = selectedEntity === 'all' ? members : members.filter((m: any) => m.entityId === selectedEntity);
+    const membersForEntity = selectedEntity === 'all' ? members : members.filter((m: any) => {
+        if (entityFilterType === 'residence') return m.entityId === selectedEntity;
+        const effectivePaymentId = m.paymentEntityId || m.entityId;
+        return effectivePaymentId === selectedEntity;
+    });
     const membersByYear = membersForEntity.filter((m: any) => m.affiliationYear <= filterYear);
 
     const baseFilteredMembers = membersByYear.filter((m: any) => {
@@ -248,6 +256,15 @@ function MembersPageContent() {
             id: 'actions',
             cell: ({ row }) => (
                 <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-all">
+                    <Button
+                        size="icon"
+                        variant="ghost"
+                        onClick={() => { setViewingMember(row.original); setIsViewModalOpen(true); }}
+                        className="w-9 h-9 rounded-xl text-muted-foreground/60 hover:text-indigo-600 hover:bg-indigo-50 transition-all border border-transparent hover:border-indigo-100"
+                        title="عرض الملف والسجل"
+                    >
+                        <APP_ICONS.ACTIONS.VIEW size={14} />
+                    </Button>
                     <WithPermission permission="MEMBERS_EDIT">
                         <Button
                             size="icon"
@@ -371,6 +388,20 @@ function MembersPageContent() {
                     </Select>
                 </div>
                 <div className="w-full md:w-48">
+                    <Select value={entityFilterType} onValueChange={(val: any) => setEntityFilterType(val)}>
+                        <SelectTrigger className="h-12 rounded-xl border-border bg-muted/50 font-bold" dir="rtl">
+                            <div className="flex items-center gap-2">
+                                <APP_ICONS.ACTIONS.FILTER size={16} className="text-muted-foreground/60" />
+                                <SelectValue placeholder="نوع الجهة" />
+                            </div>
+                        </SelectTrigger>
+                        <SelectContent dir="rtl">
+                            <SelectItem value="residence">جهة السكن</SelectItem>
+                            <SelectItem value="payment">جهة تسديد الاشتراك</SelectItem>
+                        </SelectContent>
+                    </Select>
+                </div>
+                <div className="w-full md:w-48">
                     <Select value={selectedStatus} onValueChange={setSelectedStatus}>
                         <SelectTrigger className="h-12 rounded-xl border-border bg-muted/50 font-bold" dir="rtl">
                             <div className="flex items-center gap-2">
@@ -478,6 +509,16 @@ function MembersPageContent() {
                 />
             )}
 
+            {isViewModalOpen && (
+                <ViewMemberProfileModal
+                    member={viewingMember}
+                    onClose={() => {
+                        setIsViewModalOpen(false);
+                        setViewingMember(null);
+                    }}
+                />
+            )}
+
             <ConfirmModal
                 open={!!memberToDelete}
                 onOpenChange={(open) => !open && setMemberToDelete(null)}
@@ -508,11 +549,12 @@ export default function MembersPage() {
     );
 }
 
-const MemberModal = ({ member, entities, members, onClose, onSave }: any) => {
+function MemberModal({ member, entities, members, onClose, onSave }: any) {
     const [formData, setFormData] = useState(member ? {
         id: member.id,
         name: member.name || '',
         entityId: member.entityId || '',
+        paymentEntityId: member.paymentEntityId || 'same',
         affiliationYear: member.affiliationYear || new Date().getFullYear(),
         status: member.status || 'ACTIVE',
         stoppedAt: member.stoppedAt ? new Date(member.stoppedAt).getFullYear() : null,
@@ -521,6 +563,7 @@ const MemberModal = ({ member, entities, members, onClose, onSave }: any) => {
     } : {
         name: '',
         entityId: entities[0]?.id || '',
+        paymentEntityId: 'same',
         affiliationYear: new Date().getFullYear(),
         status: 'ACTIVE',
         stoppedAt: null,
@@ -539,6 +582,14 @@ const MemberModal = ({ member, entities, members, onClose, onSave }: any) => {
             return toast.error('يرجى تحديد سنة التوقف أو الوفاة عند اختيار حالة غير نشطة');
         }
 
+        if (formData.affiliationYear < 2010 || formData.affiliationYear > 2100) {
+            return toast.error('سنة الانتساب يجب أن تكون بين 2010 و 2100');
+        }
+
+        if (formData.stoppedAt && (formData.stoppedAt < 2010 || formData.stoppedAt > 2100)) {
+            return toast.error('سنة التوقف أو الوفاة يجب أن تكون بين 2010 و 2100');
+        }
+
         if (formData.stoppedAt && formData.stoppedAt < formData.affiliationYear) {
             return toast.error('لا يمكن أن تكون سنة التوقف أو الوفاة أقدم من سنة الانتساب');
         }
@@ -548,6 +599,7 @@ const MemberModal = ({ member, entities, members, onClose, onSave }: any) => {
             const payload = {
                 name: formData.name.trim(),
                 entityId: formData.entityId,
+                paymentEntityId: formData.paymentEntityId === 'same' ? null : formData.paymentEntityId,
                 affiliationYear: Number(formData.affiliationYear) || new Date().getFullYear(),
                 status: formData.status,
                 stoppedAt: formData.stoppedAt ? new Date(Number(formData.stoppedAt), 0, 1).toISOString() : null,
@@ -556,9 +608,9 @@ const MemberModal = ({ member, entities, members, onClose, onSave }: any) => {
             };
 
             if (member) {
-                await axios.put(`${API_BASE}/members/${member.id}`, payload, AUTH_HEADER);
+                await axios.put(`${API_BASE}/members/${member.id}`, payload, getAuthHeader());
             } else {
-                await axios.post(`${API_BASE}/members`, payload, AUTH_HEADER);
+                await axios.post(`${API_BASE}/members`, payload, getAuthHeader());
             }
             onSave();
             onClose();
@@ -579,7 +631,7 @@ const MemberModal = ({ member, entities, members, onClose, onSave }: any) => {
             description="إدارة سجل المشتركين وتاريخ انتسابهم وتوقفهم عن السداد"
             icon={APP_ICONS.MODULES.MEMBERS}
             iconClassName="bg-indigo-600 text-white shadow-indigo-100"
-            maxWidth="max-w-lg"
+            maxWidth="max-w-xl"
             preventClose={true}
             showCloseButton={false}
         >
@@ -596,18 +648,45 @@ const MemberModal = ({ member, entities, members, onClose, onSave }: any) => {
                         />
                     </div>
 
-                    <div className="space-y-2">
-                        <label className="text-sm font-black text-foreground/80 mr-1">الجهة التابع لها (Entity)</label>
-                        <Select required value={formData.entityId} onValueChange={(v) => setFormData({ ...formData, entityId: v })}>
-                            <SelectTrigger className="w-full px-5 h-14 rounded-2xl bg-muted/50 border-input focus:ring-2 focus:ring-indigo-500 font-bold text-right" dir="rtl">
-                                <SelectValue placeholder="اختر الجهة" />
-                            </SelectTrigger>
-                            <SelectContent dir="rtl" className="rounded-2xl border-border shadow-2xl">
-                                {entities.map((e: any) => (
-                                    <SelectItem key={e.id} value={e.id} className="font-bold py-3 rounded-xl cursor-pointer">{e.name}</SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
+                    <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                            <label className="text-sm font-black text-foreground/80 mr-1 flex items-center gap-2">
+                                <APP_ICONS.MODULES.ENTITIES size={14} className="text-muted-foreground/60"/> جهة السكن الأساسية
+                            </label>
+                            <Select required value={formData.entityId} onValueChange={(v) => {
+                                setFormData(prev => ({ 
+                                    ...prev, 
+                                    entityId: v,
+                                    // If creating or if payment was already same as residence, sync them
+                                    paymentEntityId: (!prev.id || prev.paymentEntityId === prev.entityId) ? v : prev.paymentEntityId
+                                }));
+                            }}>
+                                <SelectTrigger className="w-full px-5 h-14 rounded-2xl bg-muted/50 border-input focus:ring-2 focus:ring-indigo-500 font-bold text-right" dir="rtl">
+                                    <SelectValue placeholder="اختر جهة السكن" />
+                                </SelectTrigger>
+                                <SelectContent dir="rtl" className="rounded-2xl border-border shadow-2xl">
+                                    {entities.map((e: any) => (
+                                        <SelectItem key={e.id} value={e.id} className="font-bold py-3 rounded-xl cursor-pointer">{e.name}</SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+
+                        <div className="space-y-2">
+                            <label className="text-sm font-black text-foreground/80 flex items-center gap-2">
+                                <APP_ICONS.ACTIONS.PAYMENT size={14} className="text-muted-foreground/60"/> جهة تسديد الاشتراكات
+                            </label>
+                            <Select required value={formData.paymentEntityId} onValueChange={(v) => setFormData({ ...formData, paymentEntityId: v })}>
+                                <SelectTrigger className="w-full px-5 h-14 rounded-2xl bg-muted/50 border-input focus:ring-2 focus:ring-emerald-500 font-bold text-right" dir="rtl">
+                                    <SelectValue placeholder="تحديد جهة الدفع" />
+                                </SelectTrigger>
+                                <SelectContent dir="rtl" className="rounded-2xl border-border shadow-2xl">
+                                    {entities.map((e: any) => (
+                                        <SelectItem key={`pay-${e.id}`} value={e.id} className="font-bold py-3 rounded-xl cursor-pointer text-emerald-700">{e.name}</SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
                     </div>
 
                     <div className="grid grid-cols-2 gap-4">
@@ -647,6 +726,8 @@ const MemberModal = ({ member, entities, members, onClose, onSave }: any) => {
                             <Input
                                 type="number"
                                 required
+                                min={2010}
+                                max={2100}
                                 className="w-full px-5 h-14 rounded-2xl bg-muted/50 border-input focus-visible:ring-indigo-500 text-center font-bold"
                                 value={formData.affiliationYear}
                                 onChange={e => setFormData({ ...formData, affiliationYear: parseInt(e.target.value) })}
@@ -659,6 +740,8 @@ const MemberModal = ({ member, entities, members, onClose, onSave }: any) => {
                             </label>
                             <Input
                                 type="number"
+                                min={2010}
+                                max={2100}
                                 className="w-full px-5 h-14 rounded-2xl bg-muted/50 border-input focus-visible:ring-indigo-500 text-center font-bold"
                                 placeholder="غير متوقف"
                                 value={formData.stoppedAt || ''}
@@ -709,9 +792,9 @@ const MemberModal = ({ member, entities, members, onClose, onSave }: any) => {
             </form>
         </ActionModal>
     );
-};
+}
 
-const MemberExemptionsModal = ({ member, onClose, onSave }: any) => {
+function MemberExemptionsModal({ member, onClose, onSave }: any) {
     const [exemptions, setExemptions] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [togglingYear, setTogglingYear] = useState<number | null>(null);
@@ -719,7 +802,7 @@ const MemberExemptionsModal = ({ member, onClose, onSave }: any) => {
     const fetchExemptions = async () => {
         setLoading(true);
         try {
-            const res = await axios.get(`${API_BASE}/members/${member.id}/exemptions`, AUTH_HEADER);
+            const res = await axios.get(`${API_BASE}/members/${member.id}/exemptions`, getAuthHeader());
             setExemptions(res.data);
         } catch (err) {
             toast.error("فشل تحميل قائمة الإعفاءات");
@@ -737,14 +820,14 @@ const MemberExemptionsModal = ({ member, onClose, onSave }: any) => {
         setTogglingYear(year);
         try {
             if (currentExemption) {
-                await axios.delete(`${API_BASE}/exemptions/${currentExemption.id}`, AUTH_HEADER);
+                await axios.delete(`${API_BASE}/exemptions/${currentExemption.id}`, getAuthHeader());
                 toast.success(`تم إزالة إعفاء ${year}`);
             } else {
                 await axios.post(`${API_BASE}/members/exemptions`, {
                     memberId: member.id,
                     year,
                     reason: 'إعفاء'
-                }, AUTH_HEADER);
+                }, getAuthHeader());
                 toast.success(`تم إضافة إعفاء لسنة ${year}`);
             }
             await fetchExemptions();
@@ -869,4 +952,281 @@ const MemberExemptionsModal = ({ member, onClose, onSave }: any) => {
             </div>
         </ActionModal>
     );
-};
+}
+
+function ViewMemberProfileModal({ member, onClose }: any) {
+    const [activeTab, setActiveTab] = useState<'info' | 'history' | 'audit'>('info');
+    const [logs, setLogs] = useState<any[]>([]);
+    const [loadingLogs, setLoadingLogs] = useState(false);
+
+    useEffect(() => {
+        if (activeTab === 'audit' && member) {
+            fetchLogs();
+        }
+    }, [activeTab, member]);
+
+    const fetchLogs = async () => {
+        setLoadingLogs(true);
+        try {
+            const res = await axios.get(`${META_BASE}/audit-logs?entityId=${member.id}`, getAuthHeader());
+            setLogs(res.data);
+        } catch (err) {
+            console.error("Error fetching logs:", err);
+        } finally {
+            setLoadingLogs(false);
+        }
+    };
+
+    if (!member) return null;
+
+    const startYear = member.affiliationYear || new Date().getFullYear();
+    const currentYear = new Date().getFullYear();
+    const stoppedYear = member.stoppedAt ? new Date(member.stoppedAt).getFullYear() : Infinity;
+    
+    const endDisplayYear = Math.max(currentYear, stoppedYear === Infinity ? 0 : stoppedYear);
+    const historyYears = [];
+    for (let y = endDisplayYear; y >= startYear; y--) {
+        historyYears.push(y);
+    }
+
+    return (
+        <ActionModal
+            isOpen={true}
+            onClose={onClose}
+            title={member.name}
+            description={`سجل العضو لدى ${member.entity?.name || '---'}`}
+            icon={APP_ICONS.ACTIONS.VIEW}
+            maxWidth="max-w-2xl"
+            iconClassName="bg-indigo-600 text-white shadow-indigo-50"
+        >
+            <div className="space-y-6">
+                <div className="flex p-1 bg-muted/50 rounded-2xl border border-border gap-1">
+                    <button 
+                        onClick={() => setActiveTab('info')}
+                        className={cn(
+                            "flex-1 h-11 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-2",
+                            activeTab === 'info' ? "bg-card text-emerald-600 shadow-sm border border-border" : "text-muted-foreground hover:bg-muted"
+                        )}
+                    >
+                        <APP_ICONS.MODULES.MEMBERS size={16} />
+                        البيانات الأساسية
+                    </button>
+                    <button 
+                        onClick={() => setActiveTab('history')}
+                        className={cn(
+                            "flex-1 h-11 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-2",
+                            activeTab === 'history' ? "bg-card text-indigo-600 shadow-sm border border-border" : "text-muted-foreground hover:bg-muted"
+                        )}
+                    >
+                        <APP_ICONS.MODULES.COLLECT_HISTORY size={16} />
+                        سجل الاشتراكات
+                    </button>
+                    <button 
+                        onClick={() => setActiveTab('audit')}
+                        className={cn(
+                            "flex-1 h-11 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-2",
+                            activeTab === 'audit' ? "bg-card text-amber-600 shadow-sm border border-border" : "text-muted-foreground hover:bg-muted"
+                        )}
+                    >
+                        <APP_ICONS.MODULES.AUDIT size={16} />
+                        سجل التغييرات
+                    </button>
+                </div>
+
+                <div className="min-h-[400px] max-h-[500px] overflow-y-auto px-1 custom-scrollbar">
+                    {activeTab === 'info' ? (
+                        <div className="space-y-6 py-2">
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="p-4 rounded-3xl bg-muted/30 border border-border/50 space-y-1">
+                                    <p className="text-[10px] font-black text-muted-foreground/60 flex items-center gap-2">
+                                        <APP_ICONS.MODULES.ENTITIES size={12}/> جهة السكن (العمل الأصلية)
+                                    </p>
+                                    <p className="text-sm font-bold text-foreground">{member.entity?.name || '---'}</p>
+                                </div>
+                                <div className="p-4 rounded-3xl bg-muted/30 border border-border/50 space-y-1">
+                                    <p className="text-[10px] font-black text-muted-foreground/60 flex items-center gap-2">
+                                        <APP_ICONS.ACTIONS.PAYMENT size={12}/> جهة تسديد الاشتراكات
+                                    </p>
+                                    <p className="text-sm font-bold text-foreground">{member.paymentEntity?.name || member.entity?.name || '---'}</p>
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="p-4 rounded-3xl bg-muted/30 border border-border/50 space-y-1">
+                                    <p className="text-[10px] font-black text-muted-foreground/60 flex items-center gap-2">
+                                        <APP_ICONS.SHARED.PHONE size={12}/> رقم الهاتف (واتساب)
+                                    </p>
+                                    <p className="text-sm font-bold text-foreground" dir="ltr">{member.phone || 'غير مسجل'}</p>
+                                </div>
+                                <div className="p-4 rounded-3xl bg-muted/30 border border-border/50 space-y-1">
+                                    <p className="text-[10px] font-black text-muted-foreground/60 flex items-center gap-2">
+                                        <APP_ICONS.MODULES.MEMBERS size={12}/> المسؤول عنه
+                                    </p>
+                                    <p className="text-sm font-bold text-foreground">{member.manager?.name || 'مستقل / غير محدد'}</p>
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-3 gap-4">
+                                <div className="p-4 rounded-3xl bg-muted/30 border border-border/50 space-y-1 text-center">
+                                    <p className="text-[10px] font-black text-muted-foreground/60">سنة الانتساب</p>
+                                    <p className="text-lg font-black text-indigo-600 tracking-tight">{member.affiliationYear}</p>
+                                </div>
+                                <div className="p-4 rounded-3xl bg-muted/30 border border-border/50 space-y-1 text-center">
+                                    <p className="text-[10px] font-black text-muted-foreground/60">سنة التوقف</p>
+                                    <p className="text-lg font-black text-rose-600 tracking-tight">{stoppedYear === Infinity ? '---' : stoppedYear}</p>
+                                </div>
+                                <div className="p-4 rounded-3xl bg-muted/30 border border-border/50 space-y-1 text-center">
+                                    <p className="text-[10px] font-black text-muted-foreground/60">الحالة الحالية</p>
+                                    <p className={cn(
+                                        "text-xs font-black pt-1",
+                                        member.status === 'ACTIVE' ? "text-emerald-600" :
+                                        member.status === 'INACTIVE' ? "text-amber-600" : "text-muted-foreground"
+                                    )}>
+                                        {member.status === 'ACTIVE' ? 'نشط' : 
+                                         member.status === 'INACTIVE' ? 'متوقف' : 'متوفى'}
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div className="p-6 rounded-[2rem] bg-indigo-50/30 border border-indigo-100/50 flex items-center justify-between">
+                                <div className="space-y-1">
+                                    <p className="text-xs font-black text-indigo-900/40">إجمالي السنوات المسددة</p>
+                                    <h3 className="text-2xl font-black text-indigo-600">{member.subscriptions?.length || 0} <span className="text-sm font-bold text-indigo-400">سنة</span></h3>
+                                </div>
+                                <div className="w-14 h-14 rounded-2xl bg-white shadow-sm flex items-center justify-center">
+                                    <APP_ICONS.MODULES.COLLECT_HISTORY className="text-indigo-600" size={24} />
+                                </div>
+                            </div>
+                        </div>
+                    ) : activeTab === 'history' ? (
+                        <div className="space-y-3">
+                            {historyYears.map(year => {
+                                const isPaid = member.subscriptions?.some((s: any) => s.year === year);
+                                const isExempt = member.exemptions?.some((e: any) => e.year === year);
+                                const isStopped = year === stoppedYear;
+                                const isAfterStopped = year > stoppedYear;
+
+                                return (
+                                    <div 
+                                        key={year} 
+                                        className={cn(
+                                            "p-4 rounded-[1.5rem] border flex items-center justify-between transition-all line-height-1",
+                                            isStopped ? "bg-rose-50 border-rose-200" : 
+                                            isPaid ? "bg-emerald-50/50 border-emerald-100" : 
+                                            isExempt ? "bg-amber-50/50 border-amber-100" : 
+                                            isAfterStopped ? "bg-muted/30 border-dashed border-border opacity-50" : "bg-card border-border"
+                                        )}
+                                    >
+                                        <div className="flex items-center gap-4 text-right">
+                                            <div className={cn(
+                                                "w-12 h-12 rounded-2xl flex items-center justify-center text-sm font-black shadow-sm",
+                                                isStopped ? "bg-rose-500 text-white shadow-rose-200" :
+                                                isPaid ? "bg-emerald-500 text-white shadow-emerald-200" :
+                                                isExempt ? "bg-amber-400 text-white shadow-amber-200" :
+                                                "bg-muted text-muted-foreground"
+                                            )}>
+                                                {year}
+                                            </div>
+                                            <div className="flex flex-col">
+                                                <h4 className="text-sm font-black text-foreground/90">
+                                                    {isStopped ? (member.status === 'DECEASED' ? 'سنة الوفاة' : 'سنة التوقف') : 
+                                                     isPaid ? 'تم السداد' : 
+                                                     isExempt ? 'معفي من السداد' : 
+                                                     isAfterStopped ? 'خارج فترة النشاط' : 'بانتظار السداد'}
+                                                </h4>
+                                                <p className="text-[10px] font-bold text-muted-foreground/60 uppercase">
+                                                    {isPaid ? `الحالة: مكتمل` : isExempt ? `الحالة: إعفاء رسمي` : isStopped ? `الحالة: ${member.status}` : '---'}
+                                                </p>
+                                            </div>
+                                        </div>
+
+                                        <div className="flex items-center gap-2">
+                                            {isPaid && <APP_ICONS.ACTIONS.SAVE className="text-emerald-500" size={20} />}
+                                            {isExempt && <APP_ICONS.ACTIONS.SHIELD_CHECK className="text-amber-500" size={20} />}
+                                            {isStopped && <APP_ICONS.MODULES.STATUS.INACTIVE className="text-rose-500" size={20} />}
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    ) : (
+                        <div className="space-y-4">
+                            {loadingLogs ? (
+                                <div className="flex flex-col items-center justify-center py-20 gap-4">
+                                    <APP_ICONS.STATE.LOADING className="animate-spin text-amber-500 w-10 h-10" />
+                                    <p className="text-xs font-bold text-muted-foreground">جاري استرجاع سجل التغييرات...</p>
+                                </div>
+                            ) : logs.length === 0 ? (
+                                <div className="flex flex-col items-center justify-center py-20 gap-4 opacity-40">
+                                    <APP_ICONS.ACTIONS.GHOST size={48} />
+                                    <p className="text-xs font-black">لا توجد سجلات تعديل لهذا العضو</p>
+                                </div>
+                            ) : (
+                                <div className="space-y-4 py-2">
+                                    {logs.map((log: any) => (
+                                        <div key={log.id} className="relative pr-6 border-r-2 border-amber-100 pb-2 last:pb-0">
+                                            <div className="absolute right-[-9px] top-0 w-4 h-4 rounded-full bg-amber-500 border-2 border-white shadow-sm" />
+                                            <div className="bg-muted/30 p-4 rounded-2xl border border-border/50 text-right">
+                                                <div className="flex justify-between items-start mb-2">
+                                                    <span className="text-[10px] font-black text-amber-700 bg-amber-50 px-2 py-0.5 rounded-md uppercase">
+                                                        {log.action}
+                                                    </span>
+                                                    <span className="text-[10px] font-bold text-muted-foreground/60">{log.date}</span>
+                                                </div>
+                                                <p className="text-xs font-bold text-foreground/80 mb-1">بواسطة: {log.user}</p>
+                                                <div className="text-[10px] text-muted-foreground leading-relaxed mt-2 space-y-1">
+                                                    {(() => {
+                                                        if (!log.details || typeof log.details !== 'object') return <span>{log.details || '---'}</span>;
+                                                        const changes = log.details.changes;
+                                                        if (!changes) return <span>تم تعديل بيانات العضو</span>;
+
+                                                        const fieldMap: any = {
+                                                            entityId: 'جهة السكن (الانتساب)',
+                                                            paymentEntityId: 'جهة تسديد الاشتراكات',
+                                                            affiliationYear: 'سنة الانتساب',
+                                                            stoppedAt: 'سنة التوقف/النشاط'
+                                                        };
+
+                                                        return Object.entries(changes).map(([field, values]: [string, any]) => {
+                                                            if (!values) return null;
+                                                            let displayValue = values.new;
+                                                            if (displayValue === null || displayValue === 'null' || displayValue === undefined) displayValue = 'غير محدد';
+                                                            
+                                                            // If it looks like a full ISO date (historical logs), extract year
+                                                            if (typeof displayValue === 'string' && displayValue.includes('T') && displayValue.includes('-')) {
+                                                                const date = new Date(displayValue);
+                                                                if (!isNaN(date.getTime())) displayValue = date.getFullYear();
+                                                            }
+
+                                                            return (
+                                                                <div key={field} className="flex items-center gap-2">
+                                                                    <span className="font-black text-amber-700">{fieldMap[field] || field}:</span>
+                                                                    <span className="text-foreground/70 font-bold">{displayValue}</span>
+                                                                </div>
+                                                            );
+                                                        });
+                                                    })()}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    )}
+                </div>
+
+                <div className="pt-4 border-t border-border mt-auto">
+                    <CustomButton
+                        onClick={onClose}
+                        className="w-full h-12 rounded-xl font-bold"
+                        variant="ghost"
+                        icon={APP_ICONS.ACTIONS.X}
+                    >
+                        إغلاق كامل
+                    </CustomButton>
+                </div>
+            </div>
+        </ActionModal>
+    );
+}
