@@ -30,33 +30,44 @@ const COLOR_GROUPS = [
     { label: 'بنفسجي / ورديّ', colors: ['blue', 'indigo', 'violet', 'purple', 'fuchsia', 'pink', 'rose'] },
 ];
 
+// Recursive helper to get all items with a path from nested structures
+function getDeepItems(items: any[], groupTitle: string, parentName?: string): { name: string, path: string }[] {
+    let result: { name: string, path: string }[] = [];
+    for (const item of items) {
+        const displayName = parentName ? `${parentName} > ${item.title}` : item.title;
+        if (item.href) {
+            result.push({ name: `${groupTitle} - ${displayName}`, path: item.href });
+        }
+        if (item.items && item.items.length > 0) {
+            result = [...result, ...getDeepItems(item.items, groupTitle, displayName)];
+        }
+    }
+    return result;
+}
+
 // Extract all flat items for theme selection
 const APP_SECTIONS = SIDEBAR_STRUCTURE.flatMap(group => {
-    const items = group.items || [];
-    const groupItems = items.map(item => ({
-        name: `${group.title} - ${item.title}`,
-        path: item.href
-    }));
+    const deepItems = getDeepItems(group.items || [], group.title);
     if ('href' in group && group.href) {
-        return [{ name: group.title, path: group.href }, ...groupItems];
+        return [{ name: group.title, path: group.href as string }, ...deepItems];
     }
-    return groupItems;
-}).filter((v, i, a) => a.findIndex(t => t.path === v.path) === i);
+    return deepItems;
+}).filter((v, i, a) => v.path && a.findIndex(t => t.path === v.path) === i);
 
 // Grouped sections for the UI
 const APP_GROUPS = SIDEBAR_STRUCTURE.map(group => {
-    const items = group.items || [];
-    const groupItems = items.map(item => ({
-        name: item.title,
-        path: item.href
+    const deepItems = getDeepItems(group.items || [], group.title).map(it => ({
+        name: it.name.split(' - ')[1] || it.name,
+        path: it.path
     }));
-    let finalItems = groupItems;
+    
+    let finalItems = deepItems;
     if ('href' in group && group.href) {
-        finalItems = [{ name: 'الصفحة الرئيسية للقسم', path: group.href }, ...groupItems];
+        finalItems = [{ name: 'الصفحة الرئيسية للقسم', path: group.href as string }, ...deepItems];
     }
     return {
         title: group.title,
-        items: finalItems.filter((v, i, a) => a.findIndex(t => t.path === v.path) === i)
+        items: finalItems.filter((v, i, a) => v.path && a.findIndex(t => t.path === v.path) === i)
     };
 }).filter(g => g.items.length > 0);
 
@@ -126,7 +137,7 @@ export default function ThemeSettingsPage() {
     const page_theme = usePageTheme();
     const { themes, refreshThemes } = usePageThemeContext();
 
-    const [selectedPath, setSelectedPath] = useState(APP_SECTIONS[0].path);
+    const [selectedPath, setSelectedPath] = useState<string>(APP_SECTIONS[0]?.path || '');
     const [dropdownOpen, setDropdownOpen] = useState(false);
     
     // Group expansion state (all expanded by default)
@@ -156,15 +167,15 @@ export default function ThemeSettingsPage() {
 
     // Get the currently active color for the selected path (pending > saved > default)
     const activeColor = useMemo(() => {
-        if (pendingColors[selectedPath] !== undefined) return pendingColors[selectedPath];
-        return getSavedColor(selectedPath) || getDefaultColor(selectedPath);
+        if (selectedPath && pendingColors[selectedPath] !== undefined) return pendingColors[selectedPath];
+        return (selectedPath ? getSavedColor(selectedPath) : null) || getDefaultColor(selectedPath);
     }, [pendingColors, selectedPath, getSavedColor, getDefaultColor]);
 
     const sectionName = useMemo(() => APP_SECTIONS.find(s => s.path === selectedPath)?.name || '', [selectedPath]);
     const previewTheme = PALETTES[activeColor.toUpperCase()] || PALETTES.BLUE;
     const previewHex = COLOR_HEX[activeColor.toLowerCase()] || '#2563eb';
 
-    const hasPending = pendingColors[selectedPath] !== undefined;
+    const hasPending = selectedPath ? pendingColors[selectedPath] !== undefined : false;
     const savedColor = getSavedColor(selectedPath);
     const isCustomized = !!savedColor;
 
@@ -179,7 +190,7 @@ export default function ThemeSettingsPage() {
     };
 
     const handleSave = async () => {
-        const colorToSave = pendingColors[selectedPath];
+        const colorToSave = selectedPath ? pendingColors[selectedPath] : null;
         if (!colorToSave) {
             toast.error('يرجى اختيار لون مختلف أولاً');
             return;
@@ -378,7 +389,7 @@ export default function ThemeSettingsPage() {
                                                 : isCustomized ? "bg-emerald-500 animate-pulse"
                                                     : "bg-slate-500"
                                         )} />
-                                        {hasPending ? `معاينة: ${pendingColors[selectedPath]}`
+                                        {hasPending ? `معاينة: ${selectedPath ? pendingColors[selectedPath] : ''}`
                                             : isCustomized ? `محفوظ: ${savedColor}`
                                                 : 'افتراضي'}
                                     </div>

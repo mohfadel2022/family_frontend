@@ -1,0 +1,11 @@
+[33m548bb89[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmaster[m[33m)[m HEAD@{0}: commit: frontend ver3
+[33m210783b[m HEAD@{1}: reset: moving to HEAD~
+[33m0851f25[m[33m ([m[1;31morigin/master[m[33m)[m HEAD@{2}: reset: moving to HEAD~1
+[33mb0acefa[m HEAD@{3}: commit: frintend ver3.2
+[33m0851f25[m[33m ([m[1;31morigin/master[m[33m)[m HEAD@{4}: commit: frontend ver3
+[33m210783b[m HEAD@{5}: commit: feat: Add initial implementation for subscription management, reporting, and settings modules with new UI pages and components.
+[33m3e04957[m HEAD@{6}: commit: feat: Add new frontend pages for accounts, login, subscriptions, and vouchers, alongside core authentication context and API utilities.
+[33m96c5e79[m HEAD@{7}: commit: frontend ver2
+[33m7d96fbe[m HEAD@{8}: commit: ffrontend_ver1
+[33m48b1f62[m HEAD@{9}: commit: app- parte 1
+[33m5767aef[m HEAD@{10}: commit (initial): Initial commit from Create Next App
