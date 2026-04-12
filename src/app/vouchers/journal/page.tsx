@@ -69,6 +69,7 @@ const JournalPage = () => {
     const [editingId, setEditingId] = useState<string | null>(null);
     const [isViewOnly, setIsViewOnly] = useState(false);
     const [status, setStatus] = useState<string | null>(null);
+    const [entryNumber, setEntryNumber] = useState<string | null>(null);
 
     // Form State
     const [description, setDescription] = useState('');
@@ -164,6 +165,7 @@ const JournalPage = () => {
 
     const resetForm = () => {
         setEditingId(null);
+        setEntryNumber(null);
         setDescription('');
         setDate(new Date().toISOString().split('T')[0]);
         setLines([
@@ -215,6 +217,7 @@ const JournalPage = () => {
     const handleEdit = async (entry: any, viewOnly: boolean = false) => {
         setIsViewOnly(viewOnly);
         setEditingId(entry.id);
+        setEntryNumber(entry.entryNumber);
         setStatus(entry.status);
         setDescription(entry.description || '');
         setDate(new Date(entry.date).toISOString().split('T')[0]);
@@ -626,7 +629,7 @@ const JournalPage = () => {
             <div className="max-w-7xl mx-auto space-y-8 animate-in fade-in duration-500">
                 <PageHeader
                     icon={view === 'list' ? APP_ICONS.ACTIONS.LIST : APP_ICONS.MODULES.JOURNAL}
-                    title={view === 'list' ? 'دفتر اليومية العامة' : (isViewOnly ? 'تفاصيل قيد يومية' : (editingId ? 'تعديل قيد يومية' : 'إنشاء قيد محاسبي'))}
+                    title={view === 'list' ? 'دفتر اليومية العامة' : (isViewOnly ? `تفاصيل قيد يومية ${entryNumber ? `#${entryNumber}` : ''}` : (editingId ? `تعديل قيد يومية ${entryNumber ? `#${entryNumber}` : ''}` : 'إنشاء قيد محاسبي'))}
                     description={view === 'list' ? 'استعرض وقم بإدارة كافة الحركات المالية المسجلة' : 'سجل التفاصيل بدقة وتأكد من توازن القيد بالعملة الأساسية'}
                     className="mb-8"
                 >

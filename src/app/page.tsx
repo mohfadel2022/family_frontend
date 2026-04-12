@@ -10,6 +10,7 @@ import { API_BASE as API_URL, getAuthHeader, SUB_BASE } from '@/lib/api';
 import { MembershipDashboard } from '@/components/dashboard/MembershipDashboard';
 import { FinancialDashboard } from '@/components/dashboard/FinancialDashboard';
 import { DashboardSkeleton } from '@/components/dashboard/DashboardSkeleton';
+import { CollapsibleSection } from '@/components/ui/CollapsibleSection';
 import { IconBox } from '@/components/ui/IconBox';
 import { useAuth } from '@/context/AuthContext';
 import { CountUp } from '@/components/ui/CountUp';
@@ -55,23 +56,25 @@ const Dashboard = () => {
         }
         return new Date().getFullYear();
     });
-    const [activeTab, setActiveTab] = useState<'summary' | 'financials' | 'membership'>(() => {
+    const [activeTab, setActiveTab] = useState<string>(() => {
         if (typeof window !== 'undefined') {
-            return (localStorage.getItem('dashboard_tab') as any) || 'summary';
+            return localStorage.getItem('dashboard_tab') || 'summary';
         }
         return 'summary';
     });
+
+    useEffect(() => {
+        localStorage.setItem('dashboard_year', selectedYear.toString());
+    }, [selectedYear]);
+
+    useEffect(() => {
+        localStorage.setItem('dashboard_tab', activeTab);
+    }, [activeTab]);
+
     const [dashboardData, setDashboardData] = useState<any>(null);
     const [loading, setLoading] = useState(true);
 
     const yearOptions = Array.from({ length: 10 }, (_, i) => new Date().getFullYear() - i);
-
-    useEffect(() => {
-        if (typeof window !== 'undefined') {
-            localStorage.setItem('dashboard_year', selectedYear.toString());
-            localStorage.setItem('dashboard_tab', activeTab);
-        }
-    }, [selectedYear, activeTab]);
 
     useEffect(() => {
         fetchDashboard();
@@ -193,30 +196,6 @@ const Dashboard = () => {
                         <MembershipDashboard data={dashboardData} loading={loading} variant="full" />
                     )}
                 </div>
-            </div>
-        </div>
-    );
-};
-const CollapsibleSection = ({ title, icon, children, defaultOpen = true, accentColor }: any) => {
-    const [isOpen, setIsOpen] = useState(defaultOpen);
-    return (
-        <div className="bg-card/30 rounded-[2.5rem] border border-border/50 overflow-hidden transition-all duration-500">
-            <button 
-                onClick={() => setIsOpen(!isOpen)}
-                className="w-full flex items-center justify-between p-6 hover:bg-muted/30 transition-colors"
-            >
-                <div className="flex items-center gap-4">
-                    <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center text-white shadow-lg shadow-blue-500/10", accentColor || "bg-blue-600")}>
-                        {React.createElement(icon, { size: 18 })}
-                    </div>
-                    <h3 className="text-lg font-black text-foreground">{title}</h3>
-                </div>
-                <div className={cn("transition-transform duration-300", isOpen ? "rotate-180" : "")}>
-                    <APP_ICONS.ACTIONS.CHEVRON_DOWN size={20} className="text-muted-foreground" />
-                </div>
-            </button>
-            <div className={cn("transition-all duration-500 ease-in-out px-6 overflow-hidden", isOpen ? "max-h-[2000px] pb-8 opacity-100" : "max-h-0 opacity-0")}>
-                {children}
             </div>
         </div>
     );

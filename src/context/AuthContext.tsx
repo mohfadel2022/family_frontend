@@ -52,8 +52,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
                 // Expected unauthenticated state, no need to show an error overlay
                 if (!tokenOverride) {
                     if (typeof window !== 'undefined') {
-                        localStorage.removeItem('token');
-                        sessionStorage.removeItem('token');
+                        localStorage.clear();
+                        sessionStorage.clear();
                     }
                     document.cookie = `auth-token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT`;
                 }
@@ -76,7 +76,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
             document.cookie = `auth-token=${token}; path=/; max-age=${60 * 60 * 24 * 7}; SameSite=Strict`;
         } else {
             sessionStorage.setItem('token', token);
-            localStorage.removeItem('token');
+            localStorage.clear(); // Ensure clean state if not remembering
             document.cookie = `auth-token=${token}; path=/; SameSite=Strict`; // Session cookie
         }
         await fetchUser(token);
@@ -84,8 +84,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
     const logout = () => {
         if (typeof window !== 'undefined') {
-            localStorage.removeItem('token');
-            sessionStorage.removeItem('token');
+            localStorage.clear();
+            sessionStorage.clear();
         }
         document.cookie = `auth-token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT`;
         setUser(null);

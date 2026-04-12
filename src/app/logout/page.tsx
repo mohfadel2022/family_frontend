@@ -10,16 +10,19 @@ export default function LogoutPage() {
 
     useEffect(() => {
         const logout = async () => {
-            // Clear all session data
-            localStorage.removeItem('token');
-            localStorage.removeItem('user');
+            // Clear all data from browser storage
+            localStorage.clear();
             sessionStorage.clear();
-            // Expire the auth cookie so middleware blocks protected routes
+            
+            // Clean specific markers if needed, but clear() handles most
             document.cookie = 'auth-token=; path=/; max-age=0; SameSite=Strict';
 
+            // Brief delay for visuals
             await new Promise(resolve => setTimeout(resolve, 600));
             toast.success('تم تسجيل الخروج بنجاح');
-            router.replace('/login');
+            
+            // Critical: force-reload the entire app context
+            window.location.href = '/login';
         };
 
         logout();

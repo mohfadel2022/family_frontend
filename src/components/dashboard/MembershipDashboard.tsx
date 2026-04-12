@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Badge } from '@/components/ui/badge';
 import { CountUp } from '@/components/ui/CountUp';
+import { CollapsibleSection } from '@/components/ui/CollapsibleSection';
 
 import { SubscriptionTrendChart, FinancialTrendChart, ExpensePieChart } from './DashboardCharts';
 
@@ -128,141 +129,126 @@ export function MembershipDashboard({ data, loading, variant = 'full' }: Members
     }
 
     return (
-        <div className="space-y-8 animate-in fade-in duration-500">
+        <div className="space-y-6 animate-in fade-in duration-500">
             {/* ─── Members Insights ──────────────── */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                <Card className="lg:col-span-2 shadow-sm border-border rounded-[2.5rem] bg-card overflow-hidden">
-                    <CardHeader className="p-8 pb-0">
-                        <PageHeader
-                            icon={APP_ICONS.ACTIONS.ACTIVITY}
-                            title={`تحصيل الاشتراكات لعام ${data?.selectedYear}`}
-                            description="مبالغ الاشتراكات المحصلة شهرياً خلال العام المختار"
-                            iconClassName="bg-indigo-600 shadow-indigo-200"
-                            iconSize={18}
-                            variant="simple"
-                        />
-                    </CardHeader>
-                    <CardContent className="p-8">
-                        <SubscriptionTrendChart data={data?.membershipStats?.monthlySubscriptions || []} />
-                    </CardContent>
-                </Card>
-
-                <Card className="shadow-sm border-border rounded-[2.5rem] bg-card flex flex-col items-center justify-center p-8 relative overflow-hidden group">
-                    {/* Decorative circle */}
-                    <div className="absolute -right-20 -bottom-20 w-64 h-64 bg-emerald-500/5 rounded-full group-hover:scale-150 transition-transform duration-1000"></div>
-
-                    <div className="relative z-10 flex flex-col items-center text-center">
-                        <div className="w-20 h-20 rounded-[2rem] bg-emerald-100 dark:bg-emerald-500/20 flex items-center justify-center text-emerald-600 mb-6 shadow-xl shadow-emerald-200/20 dark:shadow-none">
-                            <APP_ICONS.ACTIONS.ACTIVITY size={32} />
-                        </div>
-                        <h3 className="text-lg font-black text-slate-800 dark:text-slate-100 mb-2">نسبة النشاط</h3>
-                        <p className="text-xs text-slate-400 font-bold mb-6 uppercase tracking-widest">Active Members Ratio</p>
-
-                        <div className="text-6xl font-black text-emerald-600 dark:text-emerald-400 mb-2 flex flex-col items-start text-right">
-                            <div className="flex items-baseline gap-1">
-                                <CountUp 
-                                    end={Math.round(((data?.membershipStats?.activeMembers || 0) / (data?.membershipStats?.totalMembers || 1)) * 100)} 
-                                />%
-                            </div>
-                        </div>
-                        <Badge variant="secondary" className="font-black bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-none">
-                            {formatDashboardNumber(data?.membershipStats?.activeMembers || 0, 0)} من أصل {formatDashboardNumber(data?.membershipStats?.totalMembers || 0, 0)}
-                        </Badge>
+            <CollapsibleSection
+                title={`تحليل الاشتراكات والنشاط لعام ${data?.selectedYear}`}
+                description="Monthly subscription trends and activity ratio"
+                icon={APP_ICONS.ACTIONS.ACTIVITY}
+                accentColor="bg-indigo-600"
+            >
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                    <div className="lg:col-span-2">
+                        <Card className="shadow-none border-0 bg-transparent overflow-hidden">
+                            <CardContent className="p-0">
+                                <SubscriptionTrendChart data={data?.membershipStats?.monthlySubscriptions || []} />
+                            </CardContent>
+                        </Card>
                     </div>
-                </Card>
-            </div>
+
+                    <div className="flex flex-col items-center justify-center p-8 relative overflow-hidden group">
+                        {/* Decorative circle */}
+                        <div className="absolute -right-20 -bottom-20 w-64 h-64 bg-emerald-500/5 rounded-full group-hover:scale-150 transition-transform duration-1000"></div>
+
+                        <div className="relative z-10 flex flex-col items-center text-center">
+                            <div className="w-16 h-16 rounded-2xl bg-emerald-100 dark:bg-emerald-500/20 flex items-center justify-center text-emerald-600 mb-6 shadow-xl shadow-emerald-200/20 dark:shadow-none">
+                                <APP_ICONS.ACTIONS.ACTIVITY size={28} />
+                            </div>
+                            <h3 className="text-base font-black text-slate-800 dark:text-slate-100 mb-1">نسبة النشاط</h3>
+                            <p className="text-[10px] text-slate-400 font-bold mb-6 uppercase tracking-widest">Active Members Ratio</p>
+
+                            <div className="text-5xl font-black text-emerald-600 dark:text-emerald-400 mb-4 flex flex-col items-start text-right">
+                                <div className="flex items-baseline gap-1">
+                                    <CountUp 
+                                        end={Math.round(((data?.membershipStats?.activeMembers || 0) / (data?.membershipStats?.totalMembers || 1)) * 100)} 
+                                    />%
+                                </div>
+                            </div>
+                            <Badge variant="secondary" className="font-black bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-none">
+                                {formatDashboardNumber(data?.membershipStats?.activeMembers || 0, 0)} من أصل {formatDashboardNumber(data?.membershipStats?.totalMembers || 0, 0)}
+                            </Badge>
+                        </div>
+                    </div>
+                </div>
+            </CollapsibleSection>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <Card className="shadow-sm border-border rounded-[2.5rem] overflow-hidden flex flex-col bg-card">
-                    <CardHeader className="border-b border-border bg-muted/30 p-8">
-                        <PageHeader
-                            icon={APP_ICONS.ACTIONS.CALENDAR}
-                            title="إجمالي الاشتراكات المحصلة"
-                            description="مقارنة بين السنوات الأخيرة (مبالغ)"
-                            iconClassName="bg-card text-muted-foreground/80 shadow-sm"
-                            iconSize={16}
-                            variant="simple"
-                        />
-                    </CardHeader>
-                    <CardContent className="p-8 flex-1">
-                        <div className="space-y-4">
-                            {data?.membershipStats?.subscriptionsByYear?.length > 0 ? (
-                                data.membershipStats.subscriptionsByYear.map((item: any) => (
-                                    <div
-                                        key={item.year}
-                                        className="flex items-center justify-between p-5 bg-muted/40 rounded-3xl border border-border cursor-pointer hover:bg-white dark:hover:bg-slate-800 hover:shadow-xl transition-all active:scale-[0.98] group"
-                                        onClick={() => router.push(`/subscriptions/members?year=${item.year}&paid=true`)}
-                                    >
-                                        <div className="flex flex-row-reverse justify-between items-center w-full">
-                                            <div className="flex flex-col items-start min-w-[100px] uppercase text-right">
-                                                <div className="font-black text-xl text-slate-900 dark:text-slate-100 border-b-2">
-                                                    {formatDashboardNumber(item.amountBase || 0)} <span className="text-[12px] text-slate-400 font-bold">{data?.baseCurrencySymbol}</span>
-                                                </div>
-                                                <div className="flex flex-col items-start gap-0.5 mt-0.5 ">
-                                                    {(item.currencies || []).map((curr: any) => (
-                                                        <div key={curr.code} className="text-[14px] font-bold text-foreground/40 tabular-nums leading-none">
-                                                            {formatDashboardNumber(curr.amount || 0)} {curr.symbol || curr.code}
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                                <div className="text-[12px] font-black text-indigo-600/80 mt-1 tracking-tighter bg-indigo-50/50 dark:bg-indigo-900/20  py-0.5 rounded-full px-2">
-                                                    المسددين: {formatDashboardNumber(item.memberCount || 0, 0)}
-                                                </div>
-                                            </div>
-                                            <div className="flex items-center gap-4 overflow-hidden">
-                                                <div className="w-11 h-11 rounded-2xl bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 flex flex-col items-center justify-center font-black transition-colors group-hover:bg-indigo-600 group-hover:text-white shrink-0">
-                                                    {item.year}
-                                                </div>
-                                                <span className="font-black text-slate-700 dark:text-slate-300 truncate">اشتراكات عام {item.year}</span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                ))
-                            ) : (
-                                <div className="text-center py-10 text-muted-foreground/60 font-medium">لا توجد بيانات اشتراكات محصلة بعد</div>
-                            )}
-                        </div>
-                    </CardContent>
-                </Card>
-
-                <Card className="shadow-sm border-border rounded-[2.5rem] overflow-hidden flex flex-col bg-card">
-                    <CardHeader className="border-b border-border bg-muted/30 p-8">
-                        <PageHeader
-                            icon={APP_ICONS.MODULES.JOURNAL}
-                            title="الأعضاء المطالبين بالسداد"
-                            description="عدد الأعضاء غير المسددين حسب السنة"
-                            iconClassName="bg-card text-muted-foreground/80 shadow-sm"
-                            iconSize={16}
-                            variant="simple"
-                        />
-                    </CardHeader>
-                    <CardContent className="p-8 flex-1">
-                        <div className="space-y-4 text-sm">
-                            {data?.membershipStats?.pendingPaymentsByYear?.slice(0, 5).map((item: any) => (
+                <CollapsibleSection
+                    title="سجل الاشتراكات السنوية"
+                    description="Comparison of total collected by year"
+                    icon={APP_ICONS.ACTIONS.CALENDAR}
+                    accentColor="bg-slate-600"
+                >
+                    <div className="space-y-4 pt-2">
+                        {data?.membershipStats?.subscriptionsByYear?.length > 0 ? (
+                            data.membershipStats.subscriptionsByYear.map((item: any) => (
                                 <div
                                     key={item.year}
-                                    className="flex items-center justify-between p-5 bg-rose-500/5 dark:bg-rose-500/10 rounded-3xl border border-rose-500/10 cursor-pointer hover:bg-rose-500/10 dark:hover:bg-rose-500/20 hover:shadow-xl transition-all active:scale-[0.98] group"
-                                    onClick={() => router.push(`/subscriptions/members?year=${item.year}&due=true`)}
+                                    className="flex items-center justify-between p-5 bg-muted/40 rounded-3xl border border-border cursor-pointer hover:bg-white dark:hover:bg-slate-800 hover:shadow-xl transition-all active:scale-[0.98] group"
+                                    onClick={() => router.push(`/subscriptions/members?year=${item.year}&paid=true`)}
                                 >
                                     <div className="flex flex-row-reverse justify-between items-center w-full">
-                                        <div className="font-black text-xl text-rose-600 flex flex-col items-start uppercase text-right min-w-[60px]">
-                                            {formatDashboardNumber(item.pending || 0, 0)} <span className="text-[12px] text-rose-400 font-bold tracking-tighter">لم يسددوا</span>
+                                        <div className="flex flex-col items-start min-w-[100px] uppercase text-right">
+                                            <div className="font-black text-xl text-slate-900 dark:text-slate-100 border-b-2">
+                                                {formatDashboardNumber(item.amountBase || 0)} <span className="text-[12px] text-slate-400 font-bold">{data?.baseCurrencySymbol}</span>
+                                            </div>
+                                            <div className="flex flex-col items-start gap-0.5 mt-0.5 ">
+                                                {(item.currencies || []).map((curr: any) => (
+                                                    <div key={curr.code} className="text-[14px] font-bold text-foreground/40 tabular-nums leading-none">
+                                                        {formatDashboardNumber(curr.amount || 0)} {curr.symbol || curr.code}
+                                                    </div>
+                                                ))}
+                                            </div>
+                                            <div className="text-[12px] font-black text-indigo-600/80 mt-1 tracking-tighter bg-indigo-50/50 dark:bg-indigo-900/20  py-0.5 rounded-full px-2">
+                                                المسددين: {formatDashboardNumber(item.memberCount || 0, 0)}
+                                            </div>
                                         </div>
                                         <div className="flex items-center gap-4 overflow-hidden">
-                                            <div className="w-11 h-11 rounded-2xl bg-rose-500/10 text-rose-600 dark:text-rose-400 flex flex-col items-center justify-center font-black group-hover:bg-rose-600 group-hover:text-white transition-all shrink-0">
+                                            <div className="w-11 h-11 rounded-2xl bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 flex flex-col items-center justify-center font-black transition-colors group-hover:bg-indigo-600 group-hover:text-white shrink-0">
                                                 {item.year}
                                             </div>
-                                            <div className="flex flex-col text-right truncate">
-                                                <span className="font-black text-slate-700 dark:text-slate-300 truncate">متأخرات عام {item.year}</span>
-                                                <span className="text-[12px] text-slate-400 font-bold truncate leading-none mt-1">إجمالي المطالبين: {formatDashboardNumber(item.expected || 0, 0)} | سدد: {formatDashboardNumber(item.paid || 0, 0)}</span>
-                                            </div>
+                                            <span className="font-black text-slate-700 dark:text-slate-300 truncate">اشتراكات عام {item.year}</span>
                                         </div>
                                     </div>
                                 </div>
-                            ))}
-                        </div>
-                    </CardContent>
-                </Card>
+                            ))
+                        ) : (
+                            <div className="text-center py-10 text-muted-foreground/60 font-medium">لا توجد بيانات اشتراكات محصلة بعد</div>
+                        )}
+                    </div>
+                </CollapsibleSection>
+
+                <CollapsibleSection
+                    title="المتأخرات والمطالبات"
+                    description="Unpaid members by year"
+                    icon={APP_ICONS.MODULES.JOURNAL}
+                    accentColor="bg-rose-600"
+                >
+                    <div className="space-y-4 text-sm pt-2">
+                        {data?.membershipStats?.pendingPaymentsByYear?.slice(0, 5).map((item: any) => (
+                            <div
+                                key={item.year}
+                                className="flex items-center justify-between p-5 bg-rose-500/5 dark:bg-rose-500/10 rounded-3xl border border-rose-500/10 cursor-pointer hover:bg-rose-500/10 dark:hover:bg-rose-500/20 hover:shadow-xl transition-all active:scale-[0.98] group"
+                                onClick={() => router.push(`/subscriptions/members?year=${item.year}&due=true`)}
+                            >
+                                <div className="flex flex-row-reverse justify-between items-center w-full">
+                                    <div className="font-black text-xl text-rose-600 flex flex-col items-start uppercase text-right min-w-[60px]">
+                                        {formatDashboardNumber(item.pending || 0, 0)} <span className="text-[12px] text-rose-400 font-bold tracking-tighter">لم يسددوا</span>
+                                    </div>
+                                    <div className="flex items-center gap-4 overflow-hidden">
+                                        <div className="w-11 h-11 rounded-2xl bg-rose-500/10 text-rose-600 dark:text-rose-400 flex flex-col items-center justify-center font-black group-hover:bg-rose-600 group-hover:text-white transition-all shrink-0">
+                                            {item.year}
+                                        </div>
+                                        <div className="flex flex-col text-right truncate">
+                                            <span className="font-black text-slate-700 dark:text-slate-300 truncate">متأخرات عام {item.year}</span>
+                                            <span className="text-[12px] text-slate-400 font-bold truncate leading-none mt-1">إجمالي المطالبين: {formatDashboardNumber(item.expected || 0, 0)} | سدد: {formatDashboardNumber(item.paid || 0, 0)}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </CollapsibleSection>
             </div>
         </div>
     );

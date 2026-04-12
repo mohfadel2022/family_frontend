@@ -163,8 +163,16 @@ function CollectPageContent() {
     useEffect(() => {
         if (selectedEntityId && year) {
             fetchDueMembers();
+            
+            // Auto-set currency in AUTO mode
+            if (mode === 'AUTO' && selectedEntityId !== 'ALL') {
+                const entity = entities.find(e => e.id === selectedEntityId);
+                if (entity?.currencyId) {
+                    setSelectedCurrencyId(entity.currencyId);
+                }
+            }
         }
-    }, [selectedEntityId, year]);
+    }, [selectedEntityId, year, mode, entities]);
 
     const fetchDueMembers = async () => {
         if (!year || year < 2010 || year > 2100) {
@@ -679,21 +687,29 @@ function CollectPageContent() {
                             <div className="space-y-2">
                                 <label className="text-sm font-black text-muted-foreground">حساب القبض (المدين - كاش/بنك)</label>
                                 <SearchableAccountSelect
-                                    accounts={accounts.filter(a => !accounts.some(b => b.parentId === a.id) && a.type === 'ASSET')}
+                                    accounts={accounts.filter(a => 
+                                        !accounts.some(b => b.parentId === a.id) && 
+                                        a.type === 'ASSET' &&
+                                        (!selectedCurrencyId || a.currencyId === selectedCurrencyId)
+                                    )}
                                     value={debitAccountId}
                                     onChange={setDebitAccountId}
                                     onAddNew={() => seIsActionModalOpen(true)}
-                                    placeholder="اختر حساب القبض (أصول)..."
+                                    placeholder={`اختر حساب القبض (${collectionCurrency?.code || 'أصول'})...`}
                                 />
                             </div>
                             <div className="space-y-2">
                                 <label className="text-sm font-black text-muted-foreground">حساب الإيراد (الدائن)</label>
                                 <SearchableAccountSelect
-                                    accounts={accounts.filter(a => !accounts.some(b => b.parentId === a.id) && a.type === 'REVENUE')}
+                                    accounts={accounts.filter(a => 
+                                        !accounts.some(b => b.parentId === a.id) && 
+                                        a.type === 'REVENUE' &&
+                                        (!selectedCurrencyId || a.currencyId === selectedCurrencyId)
+                                    )}
                                     value={creditAccountId}
                                     onChange={setCreditAccountId}
                                     onAddNew={() => seIsActionModalOpen(true)}
-                                    placeholder="اختر حساب الإيراد (إيرادات)..."
+                                    placeholder={`اختر حساب الإيراد (${collectionCurrency?.code || 'إيرادات'})...`}
                                 />
                             </div>
                             <div className="space-y-2">

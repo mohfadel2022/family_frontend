@@ -76,6 +76,7 @@ const ReceiptsPage = () => {
     const [editingId, setEditingId] = useState<string | null>(null);
     const [isViewOnly, setIsViewOnly] = useState(false);
     const [status, setStatus] = useState<string | null>(null);
+    const [entryNumber, setEntryNumber] = useState<string | null>(null);
 
     // Form State
     const [description, setDescription] = useState('');
@@ -180,6 +181,7 @@ const ReceiptsPage = () => {
 
     const resetForm = () => {
         setEditingId(null);
+        setEntryNumber(null);
         setDescription('سند قبض رقم ...');
         setDate(new Date().toISOString().split('T')[0]);
         setLines([
@@ -263,6 +265,7 @@ const ReceiptsPage = () => {
         setIsViewOnly(viewOnly || isLinked);
         
         setEditingId(entry.id);
+        setEntryNumber(entry.entryNumber);
         setStatus(entry.status);
         setDescription(entry.description || '');
         setDate(new Date(entry.date).toISOString().split('T')[0]);
@@ -596,8 +599,8 @@ const ReceiptsPage = () => {
             <div className="max-w-7xl mx-auto space-y-6 animate-in fade-in duration-500">
                 <PageHeader
                     icon={APP_ICONS.MODULES.RECEIPTS}
-                    title={view === 'list' ? 'سندات القبض (Recibos)' : (isViewOnly ? 'تفاصيل سند قبض' : 'تحرير سند قبض')}
-                    description="إدارة كافة المقبوضات المالية والتحقق من القيد المزدوج"
+                    title={view === 'list' ? 'سندات القبض (Recibos)' : (isViewOnly ? `تفاصيل سند قبض ${entryNumber ? `#${entryNumber}` : ''}` : `تحرير سند قبض ${entryNumber ? `#${entryNumber}` : ''}`)}
+                    description={view === 'list' ? "إدارة كافة المقبوضات المالية والتحقق من القيد المزدوج" : ""}
                 >
                     {view === 'form' && editingId && (
                         <Button

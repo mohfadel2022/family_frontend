@@ -75,6 +75,7 @@ const PaymentsPage = () => {
     const [editingId, setEditingId] = useState<string | null>(null);
     const [isViewOnly, setIsViewOnly] = useState(false);
     const [status, setStatus] = useState<string | null>(null);
+    const [entryNumber, setEntryNumber] = useState<string | null>(null);
 
     // Form State
     const [description, setDescription] = useState('');
@@ -181,6 +182,7 @@ const PaymentsPage = () => {
 
     const resetForm = () => {
         setEditingId(null);
+        setEntryNumber(null);
         setDescription('سند صرف رقم ...');
         setDate(new Date().toISOString().split('T')[0]);
         setLines([
@@ -261,6 +263,7 @@ const PaymentsPage = () => {
     const handleEdit = (entry: any, viewOnly: boolean = false) => {
         setIsViewOnly(viewOnly);
         setEditingId(entry.id);
+        setEntryNumber(entry.entryNumber);
         setStatus(entry.status);
         setDescription(entry.description || '');
         setDate(new Date(entry.date).toISOString().split('T')[0]);
@@ -557,8 +560,8 @@ const PaymentsPage = () => {
             <div className="max-w-7xl mx-auto space-y-6 animate-in fade-in duration-500">
                 <PageHeader
                     icon={APP_ICONS.MODULES.PAYMENTS}
-                    title={view === 'list' ? 'سندات الصرف (Pagos)' : (isViewOnly ? 'تفاصيل سند صرف' : 'تحرير سند صرف')}
-                    description="إدارة كافة المصاريف والمدفوعات المالية والتحقق من القيد المزدوج"
+                    title={view === 'list' ? 'سندات الصرف (Pagos)' : (isViewOnly ? `تفاصيل سند صرف ${entryNumber ? `#${entryNumber}` : ''}` : `تحرير سند صرف ${entryNumber ? `#${entryNumber}` : ''}`)}
+                    description={view === 'list' ? "إدارة كافة المصاريف والمدفوعات المالية والتحقق من القيد المزدوج" : ""}
                 >
                     {view === 'form' && editingId && (
                         <Button

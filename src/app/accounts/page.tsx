@@ -196,6 +196,27 @@ const AccountsPage = () => {
     const canDelete = checkPermission('ACCOUNTS_DELETE');
 
     const [accounts, setAccounts] = useState<any[]>([]);
+    const [searchQuery, setSearchQuery] = useState(() => {
+        if (typeof window !== 'undefined') {
+            return localStorage.getItem('accounts_searchQuery') || '';
+        }
+        return '';
+    });
+    const [expandedIds, setExpandedIds] = useState<Set<string>>(() => {
+        if (typeof window !== 'undefined') {
+            const saved = localStorage.getItem('accounts_expandedIds');
+            return saved ? new Set(JSON.parse(saved)) : new Set();
+        }
+        return new Set();
+    });
+
+    useEffect(() => {
+        localStorage.setItem('accounts_searchQuery', searchQuery);
+    }, [searchQuery]);
+
+    useEffect(() => {
+        localStorage.setItem('accounts_expandedIds', JSON.stringify(Array.from(expandedIds)));
+    }, [expandedIds]);
     const [currencies, setCurrencies] = useState<any[]>([]);
     const [branches, setBranches] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
@@ -209,34 +230,10 @@ const AccountsPage = () => {
 
     // ── Expansion state fully controlled here ──────────────────────────────
     // Set of account IDs that are currently expanded
-    const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+    // (Consolidated above)
 
     // Search
-    const [searchQuery, setSearchQuery] = useState('');
-
-    // Persistence Effect
-    useEffect(() => {
-        const savedSearch = localStorage.getItem('accounts_searchQuery');
-        if (savedSearch) setSearchQuery(savedSearch);
-
-        const savedExpanded = localStorage.getItem('accounts_expandedIds');
-        if (savedExpanded) {
-            try {
-                const parsed = JSON.parse(savedExpanded);
-                if (Array.isArray(parsed)) setExpandedIds(new Set(parsed));
-            } catch (e) {
-                console.error("Failed to restore expanded ids", e);
-            }
-        }
-    }, []);
-
-    useEffect(() => {
-        localStorage.setItem('accounts_searchQuery', searchQuery);
-    }, [searchQuery]);
-
-    useEffect(() => {
-        localStorage.setItem('accounts_expandedIds', JSON.stringify(Array.from(expandedIds)));
-    }, [expandedIds]);
+    // (Consolidated above)
 
     // Get all accounts that have at least one child (parent accounts)
     const getParentIds = useCallback((accs: any[]): string[] => {
@@ -255,10 +252,8 @@ const AccountsPage = () => {
             setAccounts(accs);
             setCurrencies(currRes.data);
             setBranches(branchRes.data);
-            // Default: all parents expanded ONLY if not already set from localStorage
-            if (localStorage.getItem('accounts_expandedIds') === null) {
-                setExpandedIds(new Set(getParentIds(accs)));
-            }
+            // Default: all parents expanded
+            setExpandedIds(new Set(getParentIds(accs)));
         } catch (err) {
             console.error(err);
         } finally {
