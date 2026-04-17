@@ -483,7 +483,7 @@ const PaymentsPage = () => {
             cell: ({ row }) => {
                 const entry = row.original;
                 return (
-                    <div className="flex justify-end gap-1 opacity-0 group-hover:opacity-100 transition-all">
+                    <div className="flex justify-end gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-all">
                         {entry.status === 'POSTED' ? (
                             <Button
                                 size="icon"

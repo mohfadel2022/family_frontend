@@ -118,11 +118,11 @@ export function MembershipDashboard({ data, loading, variant = 'full' }: Members
                 <MetricCard
                     icon={APP_ICONS.MODULES.COLLECT}
                     title="الأعضاء المسددون"
-                    value={stats?.totalSubscribers || 0}
+                    value={stats?.membersPaid || 0}
                     description="Paid Members"
                     iconClassName="bg-indigo-600 text-white"
-                    breakdown={stats?.totalSubscribersBreakdown}
-                    breakdownLabel="total"
+                    breakdown={stats?.breakdown}
+                    breakdownLabel="paid"
                 />
             </div>
         );

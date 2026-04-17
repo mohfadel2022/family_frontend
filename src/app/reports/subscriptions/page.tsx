@@ -124,7 +124,7 @@ const SubscriptionTableCell = React.memo(({
     }
 
     return (
-        <TableCell key={year} className="text-center p-0 border-l border-border/30">
+        <TableCell key={year} className="text-center p-0 border-l border-border/30 min-w-[75px]">
             <div className={cn(
                 "h-full w-full py-3 flex items-center justify-center transition-all min-h-[44px]",
                 cellClass
@@ -165,7 +165,7 @@ const SubscriptionTableRow = React.memo(({
                     isAffiliatedInOrAfter={year >= member.affiliationYear}
                 />
             ))}
-            <TableCell className="text-right sticky left-0 bg-card group-hover:bg-muted/50 z-20 border-r border-input py-3 shadow-[-5px_0_10px_-5px_rgba(0,0,0,0.05)]">
+            <TableCell className="text-right sm:sticky left-0 bg-card group-hover:bg-muted/50 z-20 border-r border-input py-3 shadow-[-5px_0_10px_-5px_rgba(0,0,0,0.05)]">
                 <span className={cn(
                     "text-[10px] font-black px-2 py-1 rounded-lg inline-block transition-all",
                     member.status === 'ACTIVE' ? cn(theme.muted, theme.accent) :
@@ -204,7 +204,7 @@ export default function SubscriptionPivotReport() {
     const [searchTerm, setSearchTerm] = useState(savedFilters?.searchTerm || '');
     const [selectedEntity, setSelectedEntity] = useState<string>(savedFilters?.selectedEntity || 'all');
     const [selectedStatus, setSelectedStatus] = useState<string>(savedFilters?.selectedStatus || 'all');
-    const [startYear, setStartYear] = useState<string>(savedFilters?.startYear || new Date().getFullYear().toString());
+    const [startYear, setStartYear] = useState<string>(savedFilters?.startYear || '');
     const [endYear, setEndYear] = useState<string>(savedFilters?.endYear || '');
     const [affYear, setAffYear] = useState<string>(savedFilters?.affYear || '');
     const [stopYear, setStopYear] = useState<string>(savedFilters?.stopYear || '');
@@ -239,10 +239,17 @@ export default function SubscriptionPivotReport() {
 
             setData(reportData);
             
-            // If no filters were saved, set some intelligent defaults from the data
-            if (!savedFilters && reportData.years.length > 0) {
-                if (!startYear) setStartYear(reportData.years[0].toString());
-                if (!endYear) setEndYear(reportData.years[reportData.years.length - 1].toString());
+            // Ensure filters are valid with new data
+            if (reportData.years.length > 0) {
+                const minYear = reportData.years[0];
+                const maxYear = reportData.years[reportData.years.length - 1];
+                
+                if (!startYear || parseInt(startYear) < minYear || parseInt(startYear) > maxYear) {
+                    setStartYear(minYear.toString());
+                }
+                if (!endYear || parseInt(endYear) > maxYear || parseInt(endYear) < minYear) {
+                    setEndYear(maxYear.toString());
+                }
             }
         } catch (e) {
             toast.error('خطأ في تحميل البيانات');
@@ -402,25 +409,25 @@ export default function SubscriptionPivotReport() {
         return (
             <div className={cn("transition-all duration-500", (loading || isPending) ? "opacity-50 pointer-events-none blur-[1px]" : "opacity-100")}>
                 <div className={cn("bg-card rounded-[2.5rem] border shadow-2xl overflow-hidden mb-4", theme.border, theme.shadow)}>
-                    <div className="overflow-x-auto scrollbar-thin scrollbar-thumb-muted-foreground/20 scrollbar-track-transparent">
-                        <Table className="relative min-w-max border-collapse">
-                            <TableHeader>
-                                <TableRow className={cn("border-b-2", theme.border)}>
-                                    <TableHead className="w-[180px] text-right sticky right-0 bg-background z-40 border-l border-input/50 transition-all shadow-[5px_0_10px_-5px_rgba(0,0,0,0.05)] font-black text-slate-800">الاسم الكامل</TableHead>
-                                    <TableHead className="w-[80px] text-center border-l border-input/50 font-black text-slate-800">الانتساب</TableHead>
+                    <div className="overflow-x-auto overflow-y-visible scrollbar-thin scrollbar-thumb-muted-foreground/20 scrollbar-track-transparent">
+                        <table className="relative min-w-full w-max border-collapse text-sm">
+                            <thead className="bg-background">
+                                <tr className={cn("border-b-2", theme.border)}>
+                                    <th className="w-[150px] sm:w-[180px] text-right sticky right-0 bg-background z-40 border-l border-input/50 transition-all shadow-[5px_0_10px_-5px_rgba(0,0,0,0.05)] font-black text-slate-800 p-3">الاسم الكامل</th>
+                                    <th className="w-[60px] sm:w-[80px] text-center border-l border-input/50 font-black text-slate-800 p-3">الانتساب</th>
                                     {filteredYears.map(year => {
                                         const yearTheme = getYearColor(year);
                                         return (
-                                            <TableHead key={year} className={cn("w-[60px] text-center border-l border-input/50 font-black text-white", yearTheme.bg)}>
+                                            <th key={year} className={cn("min-w-[75px] w-[75px] text-center border-l border-input/50 font-black text-white p-3", yearTheme.bg)}>
                                                 {year}
-                                            </TableHead>
+                                            </th>
                                         );
                                     })}
 
-                                    <TableHead className="w-[120px] text-right sticky left-0 bg-background z-40 border-r border-input py-3 shadow-[-5px_0_10px_-5px_rgba(0,0,0,0.05)] font-black text-slate-800">الملاحظات</TableHead>
-                                </TableRow>
-                            </TableHeader>
-                            <TableBody>
+                                    <th className="w-[100px] sm:w-[120px] text-right sm:sticky left-0 bg-background z-40 border-r border-input py-3 shadow-[-5px_0_10px_-5px_rgba(0,0,0,0.05)] font-black text-slate-800 px-3">الملاحظات</th>
+                                </tr>
+                            </thead>
+                            <tbody>
                                 {displayData.map((entity: any) => (
                                     <React.Fragment key={entity.entityName}>
                                         <TableRow className={cn("bg-muted/40", theme.muted)}>
@@ -447,9 +454,9 @@ export default function SubscriptionPivotReport() {
                                             />
                                         ))}
                                     </React.Fragment>
-                                ))}
-                            </TableBody>
-                    <TableHeader className="bg-accent border-t-2 border-input">
+                            ))}
+                        </tbody>
+                        <tfoot className="bg-accent border-t-2 border-input font-black">
                         {/* Summary Rows (skipped here for brevity, keeping existing logic) */}
                         <TableRow className="bg-slate-50/50 hover:bg-slate-50/80 transition-colors">
                             <TableCell className="sticky right-0 bg-slate-50 z-30 font-black text-slate-700 border-l border-slate-100/50 text-xs">المشتركون النشطون</TableCell>
@@ -499,12 +506,12 @@ export default function SubscriptionPivotReport() {
                                     {yearlyStats[year]?.uncollected || 0}
                                 </TableCell>
                             ))}
-                            <TableCell className="sticky left-0 bg-rose-50 z-30 border-r border-rose-100/50">-</TableCell>
-                        </TableRow>
-                    </TableHeader>
-                </Table>
+                                <TableCell className="sticky left-0 bg-rose-50 z-30 border-r border-slate-100/50">-</TableCell>
+                            </TableRow>
+                        </tfoot>
+                    </table>
+                </div>
             </div>
-        </div>
 
         {totalResultsCount > displayLimit && (
             <div className="flex justify-center mb-8">
