@@ -19,14 +19,14 @@ const BreakdownItem = ({ item, symbol, color, level = 0 }: { item: any, symbol: 
     return (
         <div className="animate-in fade-in slide-in-from-top-1 duration-300">
             <div className={cn(
-                "flex flex-row-reverse justify-between   py-2.5 transition-all group/item rounded-xl px-3 -mx-2 hover:bg-muted/70",
+                "flex flex-row justify-between  py-2.5 transition-all group/item rounded-xl px-3 -mx-2 hover:bg-muted/70",
                 level === 0 ? "font-black bg-muted/30" : "font-bold text-muted-foreground/80",
                 hasChildren && "cursor-pointer"
             )}
             onClick={() => hasChildren && setIsExpanded(!isExpanded)}
             >
                 <div className="flex flex-col items-start min-w-[120px] text-right">
-                    <span className={cn("text-foreground whitespace-nowrap", level === 0 ? "text-[15px]" : "text-[13px]")}>
+                    <span className={cn("text-foreground whitespace-nowrap", level === 0 ? "text-[13px] md:text-[15px]" : "text-[11px] md:text-[13px]")}>
                         {formatDashboardNumber(item.balance ?? item.total ?? 0)}
                         <span className="text-[10px] ml-1 opacity-50 font-black uppercase">{symbol}</span>
                     </span>
@@ -43,9 +43,9 @@ const BreakdownItem = ({ item, symbol, color, level = 0 }: { item: any, symbol: 
                             <APP_ICONS.ACTIONS.CHEVRON_LEFT size={10} />
                         </div>
                     )}
-                    <span className="truncate">{item.name}</span>
+                    <span className=" p-1 text-[11px] md:text-[13px]">{item.name}</span>
                     {level === 0 && (
-                        <div className={cn("w-1.5 h-4 rounded-full shrink-0 shadow-sm", `bg-${color}` || "bg-blue-500")}></div>
+                        <div className={cn("w-1.5 h-4 rounded-full shrink-0 shadow-sm m-1", `bg-${color}` || "bg-blue-500")}></div>
                     )}
                 </span>
             </div>
